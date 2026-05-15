@@ -6,9 +6,9 @@
 
 pip install --upgrade pip
 pip install -e . --no-deps
-pip install sacrebleu mtdata[hf] pymarian
+pip install -r requirements.txt
 
-mkdir -p ~/.cache/huggingface/hub/
-cp -r /mnt/tg/data/cache/huggingface/hub/models--CohereLabs--aya-expanse-8b ~/.cache/huggingface/hub/
+export MODELZIP_MODEL_CACHE_DIR="${MODELZIP_MODEL_CACHE_DIR:-/mnt/tg/data/cache/tahoma/model-hub}"
+mkdir -p "$MODELZIP_MODEL_CACHE_DIR"
 
 ln -sf /mnt/tg/data/cache/marian ~/.cache/marian

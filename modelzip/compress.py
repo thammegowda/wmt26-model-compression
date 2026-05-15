@@ -12,29 +12,34 @@ Organizers would be using the output directory of this script to run the evaluat
 import argparse
 from pathlib import Path
 
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-
 from modelzip.config import LOG
 
 
 def compress_model(model_dir: Path, output_dir: Path, quant_config):
-def compress_model(model_dir: Path, output_dir: Path, quant_config):
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor, AutoTokenizer
 
     flag_file = output_dir / "._OK"
     if flag_file.exists():
         LOG.info(f"Model {output_dir} already exists; skipping")
         return
     loader_args = dict(local_files_only=True)
-    tokenizer = AutoTokenizer.from_pretrained(model_dir, **loader_args)
+    config = AutoConfig.from_pretrained(model_dir, **loader_args)
+    if getattr(config, "model_type", "") == "gemma3":
+        try:
+            from transformers import Gemma3ForConditionalGeneration
+        except ImportError as exc:  # pragma: no cover - depends on installed transformers version
+            raise RuntimeError("Gemma 3 requires transformers with Gemma3ForConditionalGeneration support") from exc
+        processor_or_tokenizer = AutoProcessor.from_pretrained(model_dir, **loader_args)
+        model_cls = Gemma3ForConditionalGeneration
+    else:
+        processor_or_tokenizer = AutoTokenizer.from_pretrained(model_dir, **loader_args)
+        model_cls = AutoModelForCausalLM
     loader_args["device_map"] = "auto"
-    # Set the quantization config
     loader_args["quantization_config"] = quant_config
     LOG.info(f"Loading model {model_dir}; quantization config: {quant_config}")
-    loader_args["quantization_config"] = quant_config
-    LOG.info(f"Loading model {model_dir}; quantization config: {quant_config}")
-    model = AutoModelForCausalLM.from_pretrained(model_dir, **loader_args)
+    model = model_cls.from_pretrained(model_dir, **loader_args)
     output_dir.mkdir(parents=True, exist_ok=True)
-    tokenizer.save_pretrained(output_dir)
+    processor_or_tokenizer.save_pretrained(output_dir)
     model.save_pretrained(output_dir)
     # copy run.py
     copy_files = ["run.py", "run.sh"]
@@ -56,6 +61,8 @@ def demo_methods(model_dir: Path):
     """
     model_name = model_dir.name.replace("-base", "")
     for approach in ["bnb-8bit", "bnb-4bit"]:
+        from transformers import BitsAndBytesConfig
+
         output_dir = model_dir.with_name(model_name + f"-{approach}")
         qargs = {}
         if approach == "bnb-8bit":
@@ -74,6 +81,8 @@ def explore_bnb_variants(model_dir: Path):
     My exploration methods for model compression using bitsandbytes.
     """
     model_name = model_dir.name.replace("-base", "")
+    from transformers import BitsAndBytesConfig
+
     # 4bit nf4 vs fp4
     output_dir = model_dir.with_name(model_name + "-bnb-4bit-nf4")
     quant_config = BitsAndBytesConfig(
@@ -121,13 +130,13 @@ def my_exploration_methods(model_dir: Path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download and compress models for WMT25 Model Compression Task")
+    parser = argparse.ArgumentParser(description="Compress WMT26 model-compression baselines")
     parser.add_argument(
         "-m",
         "--model",
         type=Path,
         help="Path to base model directory",
-        default="./workdir/models/aya-expanse-8b-base",
+        default="./workdir/models/gemma-3-12b-it-base",
     )
 
     args = parser.parse_args()

@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-set -eu
-
-#
-# this is a wrapper script to run the inference
-# Participants are expected to change this script to suit their model
-
-langs=$1
-batch_size=$2
+set -euo pipefail
 
 mydir=$(dirname "$0")
 mydir=$(realpath "$mydir")
+export MODELZIP_MODEL_DIR="${MODELZIP_MODEL_DIR:-$mydir}"
 
-python -m modelzip.baseline $langs $batch_size -m $mydir
+if [[ $# -ge 2 && "$1" != --* ]]; then
+	exec python -m modelzip.baseline "$@" --model-dir "$MODELZIP_MODEL_DIR"
+fi
+
+exec python -m modelzip.baseline --model-dir "$MODELZIP_MODEL_DIR" "$@"
 

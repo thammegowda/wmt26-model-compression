@@ -4,17 +4,18 @@
 
 """
 Evaluation pipeline. The tests and metrics are for demo purposes only.
-The actual testsets and metrics will be based on WMT25 General MT task.
+The official evaluation will use held-out WMT26 test sets.
 """
 import argparse
+import json
 import logging as LOG
 import os
 import subprocess as sp
 from pathlib import Path
 
-from modelzip.config import DEF_BATCH_SIZE, DEF_LANG_PAIRS, TASK_CONF, WORK_DIR
+from modelzip.config import DEF_BATCH_SIZE, DEF_LANG_PAIRS, TASK_CONF, WORK_DIR, normalize_lang_pair
 import shutil
-import time, json, resource
+import time, resource
 
 DEF_SHOW_PROGRESS = False
 
@@ -28,14 +29,13 @@ def get_score(src_file: Path, out_file: Path, ref_file: Path, metric: str):
     return sp.check_output(cmd, shell=True, text=True).strip()
 
 
-def get_run_cmd(model_dir: Path) -> str:
+def get_run_cmd(model_dir: Path) -> list[str]:
     """finds a run script inside the model_dir and returns the command to run it
     Looks for run.sh
     """
     run_script = model_dir / "run.sh"
     assert run_script.exists(), f"run.sh not found in {model_dir}"
-    run_cmd = f"bash {run_script}"
-    return run_cmd
+    return ["bash", str(run_script)]
 
 
 def line_count(file: Path) -> int:
@@ -58,13 +58,14 @@ def evaluate(
 
     run_cmd = get_run_cmd(model_dir)
     model_name = model_dir.name
-    for pair in langs:
+    for pair in [normalize_lang_pair(lang) for lang in langs]:
         src, tgt = pair.split("-")
         lang_dir = tests_dir / pair
-        if not test_names:
-            test_names = [f.name.replace(f".{src}-{tgt}.{src}", "") for f in lang_dir.glob(f"*.{src}-{tgt}.{src}")]
-            LOG.info(f"No test names specified. Using all available tests: {test_names}")
-        for test_name in test_names:
+        pair_test_names = test_names
+        if not pair_test_names:
+            pair_test_names = [f.name.replace(f".{src}-{tgt}.{src}", "") for f in lang_dir.glob(f"*.{src}-{tgt}.{src}")]
+            LOG.info(f"No test names specified. Using all available tests for {pair}: {pair_test_names}")
+        for test_name in pair_test_names:
             src_file = lang_dir / f"{test_name}.{src}-{tgt}.{src}"
             if not src_file.exists():
                 LOG.info(f"{test_name=} is unavailable for {pair}. {src_file} does not exist. Skipping.")
@@ -76,18 +77,23 @@ def evaluate(
                 tmp_file = out.with_suffix(out.suffix + ".tmp")
                 tmp_file.unlink(missing_ok=True)
 
-                n_lines = line_count(src_file)
-                pbar_cmd = ""
+                run_cmd_full = run_cmd + [
+                    "--lang-pair",
+                    pair,
+                    "--batch-size",
+                    str(batch_size),
+                    "--input",
+                    str(src_file),
+                    "--output",
+                    str(tmp_file),
+                ]
                 if show_progress:
-                    pbar_cmd = (
-                        f" | tqdm --total {n_lines} --desc {model_dir.name}-{src_file.name} --unit line --dynamic-ncols"
-                    )
-                run_cmd_full = f"{run_cmd} {pair} {batch_size} < {src_file} {pbar_cmd} > {tmp_file}"
-                LOG.info(f"Running command: {run_cmd_full}")
+                    run_cmd_full.append("--progress")
+                LOG.info("Running command: %s", " ".join(run_cmd_full))
                 try:
                     stats_start_time = time.time()
                     r0 = resource.getrusage(resource.RUSAGE_CHILDREN)
-                    proc = sp.Popen(run_cmd_full, shell=True)
+                    proc = sp.Popen(run_cmd_full)
                     proc.wait()
                     r1 = resource.getrusage(resource.RUSAGE_CHILDREN)
                     stats_end_time = time.time()
@@ -123,6 +129,9 @@ def evaluate(
                     LOG.error(f"Error running command: {e}")
                     continue
             for m in metrics:
+                if not ref.exists() or ref.stat().st_size == 0:
+                    LOG.info("Skipping %s for %s because reference file is missing", m, out)
+                    continue
                 score_file = out.with_suffix(out.suffix + f".{m}.score")
                 if not score_file.exists() or score_file.stat().st_size == 0:
                     try:
@@ -171,7 +180,7 @@ def backup_results(from_dir:Path, to_dir:Path):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Evaluate models on WMT25", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        description="Evaluate WMT26 model-compression submissions", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("-w", "--work", type=Path, default=WORK_DIR)
     parser.add_argument("-l", "--langs", nargs="+", help="Lang pairs to evaluate", default=DEF_LANG_PAIRS)
@@ -194,7 +203,7 @@ def main():
     )
 
     job_name = os.environ.get("AMLT_JOB_NAME", "$SUB_ID")
-    def_backup_name = f"/mnt/tg/data/projects/wmt25-model-compression/evals/backup-v1/{job_name}"
+    def_backup_name = f"/mnt/tg/data/projects/wmt26-model-compression/evals/backup-v1/{job_name}"
     parser.add_argument(
         "-B", "--backup", type=Path, default=def_backup_name,
         help=f"Backup directory to save or update results. Use shared drive like blob container mount for archival purposes.")

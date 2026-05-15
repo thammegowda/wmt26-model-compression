@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 # Created by: TG Gowda on 2025-07-31
 
-# sanity check all submissions in the /model/ directory
+# launch organizer sanity/evaluation jobs for selected submissions
 
 EXEC=echo
+submissions=()
 
-while [[ "$1" != "" ]]; do
+while [[ $# -gt 0 ]]; do
     case $1 in
         -y|--yes)
             EXEC="bash -c"
+            ;;
+        *)
+            submissions+=("$1")
             ;;
     esac
     shift
 done
 
 tag=eval02
-for s in mcptqsr tcd-kreasof-slim mcsr-v2 vicomtech; do
+for s in "${submissions[@]}"; do
     #export SUB_ID=$s
     #$EXEC "SUB_ID=$s amlt run amlt/a100.yml :sanity=$s-sanity04"
     # debug
