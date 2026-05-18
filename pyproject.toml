@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "modelzip"
 # version = "0.1.0"
 dynamic = ["version", "dependencies"]
-description = "Model Compression baselines and submission template for WMT 2026"
+description = "Organizer evaluation tools for WMT 2026 Model Compression"
 authors = [
     { name="WMT26 Model Compression Organizers", email="nomail@example.com"}
     # contant: { name="Thamme Gowda", email="tgowdan@microsoft.com" },

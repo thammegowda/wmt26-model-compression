@@ -5,9 +5,6 @@ wmt25.jsonl
 .vscode/
 
 .history
-# azure
-.amltconfig
-.amltignore
 *~
 *.egg-info/
 *.egg

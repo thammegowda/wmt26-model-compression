@@ -1,19 +1,22 @@
 #!/usr/bin/env python
-import argparse
+import logging as LOG
 import os
-import sys
 from pathlib import Path
-from typing import List
+from typing import Any, List
 
-from modelzip.config import (
+from modelzip.submission_utils import (
     DEF_BATCH_SIZE,
     DEF_MAX_NEW_TOKENS,
-    LANGS_MAP,
-    LOG,
     TRANSLATE_PROMPT,
-    USE_CHAT_TEMPLATE,
+    make_translation_prompt,
     normalize_lang_pair,
+    parse_inference_args,
+    read_source_lines,
+    validate_line_count,
+    write_output_lines,
 )
+
+USE_CHAT_TEMPLATE = True
 
 LOG.basicConfig(level=LOG.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -42,7 +45,7 @@ class LLMWrapper:
         if self._config is None:
             from transformers import AutoConfig
 
-            self._config = AutoConfig.from_pretrained(self.model_dir)
+            self._config = AutoConfig.from_pretrained(self.model_dir, local_files_only=True)
         return self._config
 
     @property
@@ -54,7 +57,7 @@ class LLMWrapper:
         if self._model is None:
             from transformers import AutoModelForCausalLM
 
-            loader_args = dict(device_map="auto", torch_dtype="auto")
+            loader_args: dict[str, Any] = dict(device_map="auto", torch_dtype="auto", local_files_only=True)
             if self.is_gemma3:
                 try:
                     from transformers import Gemma3ForConditionalGeneration
@@ -76,7 +79,7 @@ class LLMWrapper:
         if self._processor is None:
             from transformers import AutoProcessor
 
-            self._processor = AutoProcessor.from_pretrained(self.model_dir)
+            self._processor = AutoProcessor.from_pretrained(self.model_dir, local_files_only=True)
             tokenizer = getattr(self._processor, "tokenizer", None)
             if tokenizer is not None:
                 tokenizer.padding_side = "left"
@@ -89,7 +92,7 @@ class LLMWrapper:
         if self._tokenizer is None:
             from transformers import AutoTokenizer
 
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_dir, use_fast=True)
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_dir, use_fast=True, local_files_only=True)
             self._tokenizer.padding_side = "left"
             if self._tokenizer.pad_token is None and self._tokenizer.eos_token is not None:
                 self._tokenizer.pad_token = self._tokenizer.eos_token
@@ -115,8 +118,7 @@ class LLMWrapper:
         return inputs
 
     def _make_prompt(self, pair: str, text: str) -> str:
-        src, tgt = pair.split("-")
-        return self.prompt_template.format(src=LANGS_MAP[src], tgt=LANGS_MAP[tgt], text=text)
+        return make_translation_prompt(pair, text, self.prompt_template)
 
     def _generate_gemma3(self, prompts: list[str]) -> list[str]:
         import torch
@@ -206,75 +208,21 @@ def main():
         progress_bar=args.progress,
         max_new_tokens=args.max_new_tokens,
     )
-    if args.input is sys.stdin:
-        LOG.info("Reading from stdin")  # just in case if we forget to pass input via STDIN
-    # buffering all inputs into one big maxibatch for sorting based on length,
-    # assuming test sets are not too big
-    lines = args.input.read().splitlines()
-    assert len(lines) > 0, "Input file is empty. Please provide some input."
+    lines = read_source_lines(args.input)
     outputs = llm.translate_lines(args.lang_pair, lines, batch_size=args.batch_size)
-    assert len(outputs) == len(
-        lines
-    ), f"Output length {len(outputs)} does not match input length {len(lines)}"
-    args.output.write("\n".join(outputs) + "\n")
+    validate_line_count(lines, outputs)
+    write_output_lines(args.output, outputs)
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Run translation using LLM",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
-    parser.add_argument("pos_lang_pair", nargs="?", help="Compatibility positional language pair, e.g. ces-deu")
-    parser.add_argument("pos_batch_size", nargs="?", type=int, help="Compatibility positional batch size")
-    parser.add_argument("--lang-pair", help="Language pair to translate, e.g. ces-deu")
-    parser.add_argument("--batch-size", type=int, help="Batch size for translation")
-
-    # this script will/should be placed inside model directory for each model and called run.py,
-    # so assume this file's parent dir as model dir
-    my_name = Path(__file__).name
     my_dir = Path(__file__).parent
-    default_model = Path(os.getenv("MODELZIP_MODEL_DIR", my_dir if my_name == "run.py" else "workdir/models/gemma-3-12b-it-base"))
-    parser.add_argument(
-        "-m",
-        "--model",
-        "--model-dir",
-        dest="model",
-        type=Path,
-        default=default_model,
-        help="Path to a Hugging Face Transformers-compatible model directory",
+    default_model = Path(os.getenv("MODEL_DIR", os.getenv("MODELZIP_MODEL_DIR", my_dir / "workdir" / "model")))
+    return parse_inference_args(
+        default_model=default_model,
+        description="Run translation using the BNB q4 Gemma baseline",
+        default_prompt=TRANSLATE_PROMPT,
+        default_max_new_tokens=DEF_MAX_NEW_TOKENS,
     )
-
-    # optional args. Will not be set during evaluation, so make sure the defaults are correct
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=argparse.FileType("r", encoding="utf-8", errors="replace"),
-        default=sys.stdin,
-        help="Input file",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=argparse.FileType("w", encoding="utf-8", errors="replace"),
-        default=sys.stdout,
-        help="Output file",
-    )
-    parser.add_argument("-pb", "--progress", action="store_true", help="Show progress bar")
-    parser.add_argument("--max-new-tokens", type=int, default=DEF_MAX_NEW_TOKENS)
-    parser.add_argument(
-        "-pt",
-        "--prompt",
-        type=str,
-        default=TRANSLATE_PROMPT,
-        help="Prompt template for translation",
-    )
-    args = parser.parse_args()
-    lang_pair = args.lang_pair or args.pos_lang_pair
-    if not lang_pair:
-        parser.error("provide --lang-pair or the compatibility positional language pair")
-    args.lang_pair = normalize_lang_pair(lang_pair)
-    args.batch_size = args.batch_size or args.pos_batch_size or DEF_BATCH_SIZE
-    return args
 
 
 if __name__ == "__main__":

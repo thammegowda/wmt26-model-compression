@@ -4,19 +4,19 @@ set -euo pipefail
 timeout_duration=${TIMEOUT_DURATION:-900}
 lang_pair=${LANG_PAIR:-ces-deu}
 batch_size=${BATCH_SIZE:-1}
+skip_setup=${SKIP_SETUP:-0}
 
 if [[ $# -gt 0 ]]; then
     candidates=("$@")
 else
     candidates=()
-    [[ -f ./run.sh ]] && candidates+=(".")
     while IFS= read -r run_script; do
         candidates+=("$(dirname "$run_script")")
-    done < <(find ./workdir/models -mindepth 2 -maxdepth 2 -name run.sh 2>/dev/null || true)
+    done < <(find ./submissions -mindepth 2 -maxdepth 2 -name run.sh 2>/dev/null | sort)
 fi
 
 if [[ ${#candidates[@]} -eq 0 ]]; then
-    echo "No submissions found. Pass submission directories or run from a checkout with run.sh." >&2
+    echo "No submissions found. Pass submission directories or add submissions/*/run.sh." >&2
     exit 1
 fi
 
@@ -28,6 +28,7 @@ input_lines=$(wc -l < "$input_file")
 
 for submission_dir in "${candidates[@]}"; do
     run_script="$submission_dir/run.sh"
+    setup_script="$submission_dir/setup.sh"
     submission_id=$(basename "$(realpath "$submission_dir")")
     echo "===Sanity checking submission ID: $submission_id==="
     if [[ ! -f "$run_script" ]]; then
@@ -37,15 +38,23 @@ for submission_dir in "${candidates[@]}"; do
 
     echo "Submission directory: $(realpath "$submission_dir")"
     du -sh "$submission_dir"
-    output_file="$tmp_dir/$submission_id.out"
 
+    if [[ "$skip_setup" != 1 && -f "$setup_script" ]]; then
+        echo "Running setup.sh for $submission_id"
+        if ! timeout "$timeout_duration" bash "$setup_script"; then
+            echo "ERROR: setup.sh failed for submission ID: $submission_id"
+            continue
+        fi
+    fi
+
+    output_file="$tmp_dir/$submission_id.out"
     start_time=$(date +%s)
     if ! timeout "$timeout_duration" bash "$run_script" \
         --lang-pair "$lang_pair" \
         --batch-size "$batch_size" \
         --input "$input_file" \
         --output "$output_file"; then
-        echo "ERROR: Command failed for submission ID: $submission_id"
+        echo "ERROR: run.sh failed for submission ID: $submission_id"
         continue
     fi
     elapsed_time=$(($(date +%s) - start_time))

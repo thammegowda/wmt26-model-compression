@@ -30,9 +30,7 @@ def get_score(src_file: Path, out_file: Path, ref_file: Path, metric: str):
 
 
 def get_run_cmd(model_dir: Path) -> list[str]:
-    """finds a run script inside the model_dir and returns the command to run it
-    Looks for run.sh
-    """
+    """Return the command for a submission directory containing run.sh."""
     run_script = model_dir / "run.sh"
     assert run_script.exists(), f"run.sh not found in {model_dir}"
     return ["bash", str(run_script)]
@@ -52,7 +50,7 @@ def evaluate(
     test_names=None,
     batch_size: int = DEF_BATCH_SIZE,
     show_progress: bool = DEF_SHOW_PROGRESS,
-    backup_dir: Path = None,
+    backup_dir: Path | None = None,
     run_num: int=1,
 ):
 
@@ -99,12 +97,26 @@ def evaluate(
                     stats_end_time = time.time()
                     if proc.returncode != 0:
                         raise sp.CalledProcessError(proc.returncode, run_cmd_full)
+                    if not tmp_file.exists() or tmp_file.stat().st_size == 0:
+                        LOG.error("Submission did not write output file %s", tmp_file)
+                        continue
+                    expected_lines = line_count(src_file)
+                    observed_lines = line_count(tmp_file)
+                    if observed_lines != expected_lines:
+                        LOG.error(
+                            "Output line count mismatch for %s: expected=%d observed=%d",
+                            tmp_file,
+                            expected_lines,
+                            observed_lines,
+                        )
+                        tmp_file.unlink(missing_ok=True)
+                        continue
                     stats = {
                         "run_num": run_num,
                         "model_name": model_name,
                         "batch_size": batch_size,
                         "out_file": str(out),
-                        "amulet_job": os.getenv("AMLT_JOB_NAME", "N/A"),
+                        "job_name": os.getenv("JOB_NAME", os.getenv("SUB_ID", "N/A")),
                         "command": run_cmd_full,
                         "exit_code": proc.returncode,
                         "wall_time_sec": stats_end_time - stats_start_time,
@@ -122,9 +134,8 @@ def evaluate(
                         sf.write(json.dumps(stats, ensure_ascii=False, indent=None) + "\n")
 
                     LOG.info(f"Wrote stats to {stats_file}")
-                    if tmp_file.exists() and tmp_file.stat().st_size > 0:
-                        tmp_file.rename(out)
-                        LOG.info(f"Wrote translations to {out}")
+                    tmp_file.rename(out)
+                    LOG.info(f"Wrote translations to {out}")
                 except sp.CalledProcessError as e:
                     LOG.error(f"Error running command: {e}")
                     continue
@@ -186,7 +197,7 @@ def main():
     parser.add_argument("-l", "--langs", nargs="+", help="Lang pairs to evaluate", default=DEF_LANG_PAIRS)
     parser.add_argument("-b", "--batch", dest="batch_size", type=int, default=DEF_BATCH_SIZE, help="Batch size")
     parser.add_argument(
-        "-m", "--model", type=Path, required=True, help="Path to model directory. Must have a run.py or run.sh script"
+        "-m", "--model", type=Path, required=True, help="Path to submission directory containing run.sh"
     )
     parser.add_argument("-t", "--test-names", nargs="+", help="Test names to evaluate; e.g. warmup. default: all tests available.", default=[])
     parser.add_argument(
@@ -202,8 +213,8 @@ def main():
         help="Disable progress bar during evaluation"
     )
 
-    job_name = os.environ.get("AMLT_JOB_NAME", "$SUB_ID")
-    def_backup_name = f"/mnt/tg/data/projects/wmt26-model-compression/evals/backup-v1/{job_name}"
+    job_name = os.environ.get("JOB_NAME") or os.environ.get("SUB_ID") or "local"
+    def_backup_name = f"/mnt/tg/data/projects/wmt26/model-compression/evals/backup-v1/{job_name}"
     parser.add_argument(
         "-B", "--backup", type=Path, default=def_backup_name,
         help=f"Backup directory to save or update results. Use shared drive like blob container mount for archival purposes.")
