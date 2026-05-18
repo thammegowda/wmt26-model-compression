@@ -129,6 +129,14 @@ Run the organizer evaluation wrapper over all submissions:
 CUDA_VISIBLE_DEVICES=3 bash evals/evaluate.sh
 ```
 
+Submission `run.sh` scripts should respect the caller's `CUDA_VISIBLE_DEVICES` and must not overwrite it. To fan out organizer evaluation jobs over multiple GPUs with GNU Parallel, set `PARALLEL_JOBS` and optionally `GPU_IDS`:
+
+```bash
+PARALLEL_JOBS=8 GPU_IDS=0,1,2,3,4,5,6,7 bash evals/evaluate.sh
+```
+
+If `GPU_IDS` is omitted, the wrapper uses `0..PARALLEL_JOBS-1`. Setup still runs once per submission before parallel evaluation starts.
+
 ## Organizer Baselines
 
 `baseline` is the uncompressed Gemma 3 12B baseline using PyTorch and Transformers.

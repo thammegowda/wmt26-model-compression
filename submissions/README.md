@@ -15,7 +15,7 @@ README.md
 
 `compress.sh` is optional. It is not part of the evaluation contract; it is a documentation/reproducibility recipe for generating the submitted model artifact from a base model.
 
-Submissions may use organizer-provided shared helpers from `modelzip.submission_utils` for language names, language-pair aliases, prompt formatting, and line-oriented input/output. Install those helpers into the submission venv during `setup.sh`. The organizer examples do this with an editable, no-dependency install from the repository root:
+Submissions may use organizer-provided shared helpers from `modelzip.submission` for language names, language-pair aliases, prompt formatting, line-oriented input/output, and base classes for Python-based inference. Use `LLMBase` for generic causal language models and `Gemma3LLMBase` for Gemma 3 submissions. Install those helpers into the submission venv during `setup.sh`. The organizer examples do this with an editable, no-dependency install from the repository root:
 
 ```bash
 uv pip install --no-deps -e <organizer-repo-root>
@@ -30,6 +30,8 @@ bash run.sh --lang-pair ces-deu --batch-size 8 --input input.txt --output output
 ```
 
 The script must write exactly one output line for each input line. Logs, progress bars, and diagnostics must go to stderr or separate files, never into the output file.
+
+The evaluator may launch multiple `run.sh` processes in parallel and assign GPUs with `CUDA_VISIBLE_DEVICES`. A submission script must respect the inherited value and should not set or overwrite it internally.
 
 Organizer-provided examples:
 

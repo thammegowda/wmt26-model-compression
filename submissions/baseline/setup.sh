@@ -51,7 +51,7 @@ if [[ ! -x "$python_bin" ]]; then
 fi
 uv pip install --python "$python_bin" -r "$root_dir/requirements.txt"
 
-if [[ -z "$modelzip_source" && -f "$root_dir/../../modelzip/submission_utils.py" ]]; then
+if [[ -z "$modelzip_source" && -f "$root_dir/../../modelzip/submission.py" ]]; then
     modelzip_source=$(cd "$root_dir/../.." && pwd)
 fi
 if [[ -z "$modelzip_source" ]]; then
@@ -59,8 +59,8 @@ if [[ -z "$modelzip_source" ]]; then
     exit 1
 fi
 if [[ -d "$modelzip_source" ]]; then
-    if [[ ! -f "$modelzip_source/modelzip/submission_utils.py" ]]; then
-        echo "MODELZIP_SOURCE does not contain modelzip/submission_utils.py: $modelzip_source" >&2
+    if [[ ! -f "$modelzip_source/modelzip/submission.py" ]]; then
+        echo "MODELZIP_SOURCE does not contain modelzip/submission.py: $modelzip_source" >&2
         exit 1
     fi
     uv pip install --python "$python_bin" --no-deps -e "$modelzip_source"

@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from .data import CmdGetter, Wmt25BlindData, Wmt25ReferenceData, WmtJsonlData
-from .submission_utils import DEF_BATCH_SIZE, DEF_LANG_PAIRS, LANG_PAIR_ALIASES, normalize_lang_pair
+from .submission import DEF_BATCH_SIZE, DEF_LANG_PAIRS, LANG_PAIR_ALIASES, normalize_lang_pair
 
 
 LOG.basicConfig(level=LOG.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
