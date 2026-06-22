@@ -22,9 +22,12 @@ fi
 
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
-input_file="$tmp_dir/input.txt"
-printf 'Veta1\nVeta2 slovo2 slovo3\nVeta3\n' > "$input_file"
-input_lines=$(wc -l < "$input_file")
+input_file="$tmp_dir/input.jsonl"
+cat > "$input_file" <<'JSONL'
+{"doc_id":"sanity-doc-1","paragraph_id":1,"src_text":"Veta1"}
+{"doc_id":"sanity-doc-1","paragraph_id":2,"src_text":"Veta2 slovo2 slovo3"}
+{"doc_id":"sanity-doc-2","paragraph_id":1,"src_text":"Veta3"}
+JSONL
 
 for submission_dir in "${candidates[@]}"; do
     run_script="$submission_dir/run.sh"
@@ -47,7 +50,7 @@ for submission_dir in "${candidates[@]}"; do
         fi
     fi
 
-    output_file="$tmp_dir/$submission_id.out"
+    output_file="$tmp_dir/$submission_id.out.jsonl"
     start_time=$(date +%s)
     if ! timeout "$timeout_duration" bash "$run_script" \
         --lang-pair "$lang_pair" \
@@ -64,9 +67,27 @@ for submission_dir in "${candidates[@]}"; do
         echo "ERROR: Output is empty for submission ID: $submission_id"
         continue
     fi
-    output_lines=$(wc -l < "$output_file")
-    if [[ "$output_lines" -ne "$input_lines" ]]; then
-        echo "ERROR: Output line count ($output_lines) does not match input line count ($input_lines)"
+    if ! python3 - "$input_file" "$output_file" <<'PY'
+import json
+import sys
+
+def records(path):
+    with open(path, encoding="utf-8") as inp:
+        return [json.loads(line) for line in inp if line.strip()]
+
+inputs = records(sys.argv[1])
+outputs = records(sys.argv[2])
+if len(outputs) != len(inputs):
+    raise SystemExit(f"output record count {len(outputs)} does not match input record count {len(inputs)}")
+for index, (src, out) in enumerate(zip(inputs, outputs), start=1):
+    for key in ("doc_id", "paragraph_id", "src_text"):
+        if out.get(key) != src.get(key):
+            raise SystemExit(f"record {index} {key} mismatch")
+    if not isinstance(out.get("tgt_text"), str):
+        raise SystemExit(f"record {index} missing string tgt_text")
+PY
+    then
+        echo "ERROR: Output JSONL does not match the input contract"
         continue
     fi
     echo "SUCCESS: Submission ID $submission_id passed the sanity check."

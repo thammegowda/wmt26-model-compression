@@ -8,7 +8,7 @@ Inside each of those, it looks for language-pair folders named like
   SOURCE-TARGET/
 
 Within each language-pair folder, it finds all system output files matching the pattern:
-      wmt25.SOURCE-TARGET.TARGET.MODEL_TYPE.out.batchYY.runZ
+    wmt25.SOURCE-TARGET.TARGET.MODEL_TYPE.out.batchYY.runZ.jsonl
 
 Then it computes the character ratio with the source of the generated outputs, and outputs
 plots to show the distribution or outputs which segments are hallucinated (determined by a
@@ -17,11 +17,12 @@ threshold). Lastly, it builds a test set that contains no hallucinated segments 
 Usage:
   python hallucinations_checks.py \
     --root /path/to/experiments \
-    --out /path/to/output.txt
+        --out /path/to/output.jsonl
 """
 import argparse
 import csv
 import dataclasses
+import json
 import os
 import re
 import sys
@@ -66,7 +67,7 @@ def find_langpair_dirs(eval_dir_path: str, lang_pair: str) -> List[str]:
 def parse_outfiles(langpair_path: str, source_lang: str, tgt_lang: str, model_name: str) -> List[OutputFile]:
     files = []
     OUTFILE_RE = re.compile(
-        rf"^wmt25\.{source_lang}-{tgt_lang}\.{tgt_lang}\.([A-Za-z0-9_\-.]+)\.out\.batch(\d+)\.run(\d+)$"
+        rf"^wmt25\.{source_lang}-{tgt_lang}\.{tgt_lang}\.([A-Za-z0-9_\-.]+)\.out\.batch(\d+)\.run(\d+)\.jsonl$"
     )
     for name in os.listdir(langpair_path):
         m = OUTFILE_RE.match(name)
@@ -85,9 +86,9 @@ def parse_outfiles(langpair_path: str, source_lang: str, tgt_lang: str, model_na
     return sorted(files, key=lambda f: (f.model_name, f.model_type, f.src, f.tgt, f.run, f.batch))
 
 
-def read_lines(path: str) -> List[str]:
+def read_jsonl(path: str) -> List[dict]:
     with open(path, 'r', encoding='utf-8', errors='replace') as fh:
-        return [ln.rstrip('\n') for ln in fh]
+        return [json.loads(line) for line in fh if line.strip()]
 
 
 def main():
@@ -97,7 +98,7 @@ def main():
     ap.add_argument('--plot', action='store_true', default=False, help='Plot distributions')
     ap.add_argument('--threshold', type=float, default=2.0, help='Character ratio threshold')
     ap.add_argument('--out', required=True,
-                    help='Output path for the txt file with source segments that do not hallucinate in any output')
+                    help='Output JSONL path with source records that do not hallucinate in any output')
 
     args = ap.parse_args()
     all_ratios = []
@@ -110,17 +111,11 @@ def main():
         for lp in find_langpair_dirs(eval_dir_path, args.lang_pair):
             src, tgt = lp.split('-', 1)
             langpair_path = os.path.join(eval_dir_path, lp)
-            input_name = f"wmt25.{src}-{tgt}.{src}"
+            input_name = f"wmt25.{src}-{tgt}.jsonl"
             input_path = os.path.join(langpair_path, input_name)
             if not os.path.exists(input_path):
                 sys.exit(f"[ERROR] Missing input for {eval_dirname}/{lp}: {input_path}")
-            input_lines = read_lines(input_path)
-
-            meta_name = f"wmt25.{src}-{tgt}.meta"
-            meta_path = os.path.join(langpair_path, meta_name)
-            meta_lines = read_lines(meta_path)
-            if len(input_lines) != len(meta_lines):
-                sys.exit(f"[ERROR] Mismatching lines for {input_path} and {meta_path}")
+            input_records = read_jsonl(input_path)
 
             outfiles = parse_outfiles(langpair_path, src, tgt, model_name)
             if not outfiles:
@@ -128,15 +123,15 @@ def main():
                 continue
 
             for outfile in outfiles:
-                out_lines = read_lines(outfile.path)
-                if len(out_lines) != len(input_lines):
+                out_records = read_jsonl(outfile.path)
+                if len(out_records) != len(input_records):
                     print(
-                        f"[WARN] Input and output lines are not matching "
-                        f"({len(out_lines)}-{len(input_lines)}). Skipping {outfile.path}")
+                        f"[WARN] Input and output record counts are not matching "
+                        f"({len(out_records)}-{len(input_records)}). Skipping {outfile.path}")
                     continue
                 model_stats[outfile] = 0
-                for line_id, (in_line, out_line) in enumerate(zip(input_lines, out_lines)):
-                    ratio = len(out_line) / len(in_line)
+                for line_id, (input_record, output_record) in enumerate(zip(input_records, out_records)):
+                    ratio = len(output_record["tgt_text"]) / len(input_record["src_text"])
                     all_ratios.append(ratio)
                     if ratio > args.threshold:
                         hallucinated_segments.add(line_id)
@@ -159,16 +154,12 @@ def main():
 
     print(
         f"[INFO] {len(hallucinated_segments)} hallucinated segments found out of "
-        f"{len(input_lines)} from {num_processed_outputs} output files.")
+        f"{len(input_records)} from {num_processed_outputs} output files.")
 
     with open(args.out, 'w', encoding='utf-8') as f:
-        for i, line in enumerate(input_lines):
+        for i, record in enumerate(input_records):
             if i not in hallucinated_segments:
-                f.write(line + "\n")
-    with open(args.out + '.meta', 'w', encoding='utf-8') as f:
-        for i, line in enumerate(meta_lines):
-            if i not in hallucinated_segments:
-                f.write(line + "\n")
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     with open(args.out + '.stats', 'w', encoding='utf-8') as f:
         writer = csv.DictWriter(

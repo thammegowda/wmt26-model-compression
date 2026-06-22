@@ -58,7 +58,7 @@ discover_test_names() {
     local lang_dir="$work/tests/$pair"
     local src_file base suffix
 
-    suffix=".$src-$tgt.$src"
+    suffix=".$src-$tgt.jsonl"
     if [[ ! -d "$lang_dir" ]]; then
         return
     fi

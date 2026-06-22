@@ -5,9 +5,13 @@ import subprocess as sp
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, Iterable
+from typing import Any, ClassVar, Iterable
 
 LOG = logging.getLogger(__name__)
+
+
+def _normalize_text(text: str) -> str:
+    return text.replace("\n", " ").strip()
 
 
 @dataclass
@@ -62,7 +66,7 @@ class WmtJsonlData:
 
     @staticmethod
     def _split_text(text: str) -> list[str]:
-        paragraphs = [part.strip().replace("\n", " ") for part in text.strip().split("\n\n")]
+        paragraphs = [_normalize_text(part) for part in text.strip().split("\n\n")]
         return [part for part in paragraphs if part]
 
     @staticmethod
@@ -76,7 +80,7 @@ class WmtJsonlData:
         ref = tgt_text.get("refA")
         return ref if isinstance(ref, str) else None
 
-    def __call__(self) -> list[list[str | None]]:
+    def __call__(self) -> list[dict[str, Any]]:
         rows = []
         for rec in self.records():
             src_parts = self._split_text(rec["src_text"])
@@ -91,8 +95,15 @@ class WmtJsonlData:
                 )
                 ref_parts = [None] * len(src_parts)
 
-            for idx, (src, ref) in enumerate(zip(src_parts, ref_parts), start=1):
-                rows.append([src, ref, f"{rec['doc_id']}\t{idx}"])
+            for paragraph_id, (src, ref) in enumerate(zip(src_parts, ref_parts), start=1):
+                row: dict[str, Any] = {
+                    "doc_id": rec["doc_id"],
+                    "paragraph_id": paragraph_id,
+                    "src_text": src,
+                }
+                if ref is not None:
+                    row["refs"] = {"refA": _normalize_text(ref)}
+                rows.append(row)
         return rows
 
 
@@ -116,7 +127,7 @@ class LocalParagraphData:
 
     path: str | Path
 
-    def __call__(self) -> list[list[str | None]]:
+    def __call__(self) -> list[dict[str, Any]]:
         path = Path(self.path)
         if not path.exists():
             raise FileNotFoundError(f"Local data file not found: {path}")
@@ -126,13 +137,16 @@ class LocalParagraphData:
                 if not line.strip():
                     continue
                 rec = json.loads(line)
-                src = rec["src_text"].replace("\n", " ").strip()
+                row: dict[str, Any] = {
+                    "doc_id": rec["doc_id"],
+                    "paragraph_id": rec["paragraph_id"],
+                    "src_text": _normalize_text(rec["src_text"]),
+                }
                 refs = rec.get("refs") or {}
                 ref = refs.get("refA")
                 if isinstance(ref, dict):
                     ref = ref.get("ref")
                 if isinstance(ref, str):
-                    ref = ref.replace("\n", " ").strip()
-                meta = f"{rec['doc_id']}\t{rec.get('paragraph_id', 0)}"
-                rows.append([src, ref, meta])
+                    row["refs"] = {"refA": _normalize_text(ref)}
+                rows.append(row)
         return rows

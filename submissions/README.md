@@ -22,18 +22,18 @@ To set up and rerun a baseline or submission:
 ```bash
 cd submissions/<name>
 bash setup.sh
-bash run.sh --lang-pair ces-deu --batch-size 8 --input input.txt --output output.txt
+bash run.sh --lang-pair ces-deu --batch-size 8 --input input.jsonl --output output.jsonl
 ```
 
-Submissions may use helpers from `modelzip.submission` for language-pair normalization, prompt formatting, line-oriented I/O, and Python inference base classes. Install those helpers into the submission venv during `setup.sh`; the baseline scripts demonstrate the editable install. For standalone repositories, set `MODELZIP_SOURCE` before running `setup.sh`.
+Submissions may use helpers from `modelzip.submission` for language-pair normalization, prompt formatting, JSONL I/O validation, and Python inference base classes. Install those helpers into the submission venv during `setup.sh`; the baseline scripts demonstrate the editable install. For standalone repositories, set `MODELZIP_SOURCE` before running `setup.sh`.
 
 `run.sh` is the evaluator entry point and must support the following options:
 
 ```bash
-bash run.sh --lang-pair ces-deu --batch-size 8 --input input.txt --output output.txt
+bash run.sh --lang-pair ces-deu --batch-size 8 --input input.jsonl --output output.jsonl
 ```
 
-The script must write exactly one output line for each input line. Logs, progress bars, and diagnostics must go to stderr or separate files. The evaluator may launch multiple `run.sh` processes in parallel and assign GPUs with `CUDA_VISIBLE_DEVICES`; submission scripts must respect the inherited value.
+The input is JSONL with `doc_id`, `paragraph_id`, and `src_text`. The output must be JSONL with exactly one record per input record, in the same order, echoing those three fields and adding `tgt_text`. Adjacent records with the same `doc_id` are paragraphs from the same document. Logs, progress bars, and diagnostics must go to stderr or separate files. The evaluator may launch multiple `run.sh` processes in parallel and assign GPUs with `CUDA_VISIBLE_DEVICES`; submission scripts must respect the inherited value.
 
 ## Baselines
 

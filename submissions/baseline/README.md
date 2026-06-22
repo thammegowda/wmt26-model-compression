@@ -25,5 +25,5 @@ This baseline is uncompressed, so `compress.sh` is intentionally a no-op.
 ## Run
 
 ```bash
-bash run.sh --lang-pair ces-deu --batch-size 1 --input input.txt --output output.txt
+bash run.sh --lang-pair ces-deu --batch-size 1 --input input.jsonl --output output.jsonl
 ```

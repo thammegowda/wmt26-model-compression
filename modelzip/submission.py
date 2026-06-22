@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Iterable, TextIO
+from typing import Any, TextIO
 
 DEF_BATCH_SIZE = 1
 DEF_MAX_NEW_TOKENS = int(os.getenv("MODEL_MAX_NEW_TOKENS", "1024"))
@@ -47,6 +48,8 @@ TRANSLATE_PROMPT = (
     "{text}\n"
 )
 
+INPUT_RECORD_KEYS = ("doc_id", "paragraph_id", "src_text")
+
 
 def normalize_lang_pair(pair: str) -> str:
     normalized = LANG_PAIR_ALIASES.get(pair, pair)
@@ -67,20 +70,70 @@ def make_translation_prompt(pair: str, text: str, template: str = TRANSLATE_PROM
     return template.format(src=src, tgt=tgt, text=text)
 
 
-def read_source_lines(input_file: TextIO) -> list[str]:
-    lines = input_file.read().splitlines()
-    if not lines:
-        raise ValueError("Input file is empty. Please provide some input.")
-    return lines
+def normalize_segment_text(text: str) -> str:
+    return text.replace("\n", " ").strip()
 
 
-def write_output_lines(output_file: TextIO, lines: Iterable[str]) -> None:
-    output_file.write("\n".join(line.replace("\n", " ") for line in lines) + "\n")
+def read_input_records(input_file: TextIO) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for line_number, line in enumerate(input_file, start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Input line {line_number} is not valid JSON: {exc.msg}") from exc
+        if not isinstance(record, dict):
+            raise ValueError(f"Input line {line_number} must be a JSON object")
+        missing = [key for key in INPUT_RECORD_KEYS if key not in record]
+        if missing:
+            raise ValueError(f"Input line {line_number} is missing keys: {', '.join(missing)}")
+        if not isinstance(record["src_text"], str):
+            raise ValueError(f"Input line {line_number} has non-string src_text")
+        records.append({
+            "doc_id": record["doc_id"],
+            "paragraph_id": record["paragraph_id"],
+            "src_text": normalize_segment_text(record["src_text"]),
+        })
+    if not records:
+        raise ValueError("Input file is empty. Please provide JSONL records.")
+    return records
 
 
-def validate_line_count(inputs: list[str], outputs: list[str]) -> None:
-    if len(outputs) != len(inputs):
-        raise ValueError(f"Output length {len(outputs)} does not match input length {len(inputs)}")
+def validate_output_records(input_records: list[dict[str, Any]], output_file: TextIO) -> list[dict[str, Any]]:
+    output_records = []
+    for line_number, line in enumerate(output_file, start=1):
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        missing = [key for key in (*INPUT_RECORD_KEYS, "tgt_text") if key not in record]
+        if missing:
+            raise ValueError(f"Output line {line_number} is missing keys: {', '.join(missing)}")
+        if not isinstance(record["tgt_text"], str):
+            raise ValueError(f"Output line {line_number} has non-string tgt_text")
+        record["src_text"] = normalize_segment_text(record["src_text"])
+        record["tgt_text"] = normalize_segment_text(record["tgt_text"])
+        output_records.append(record)
+
+    if len(output_records) != len(input_records):
+        raise ValueError(f"Output record count {len(output_records)} does not match input record count {len(input_records)}")
+    for index, (input_record, output_record) in enumerate(zip(input_records, output_records), start=1):
+        for key in INPUT_RECORD_KEYS:
+            if output_record[key] != input_record[key]:
+                raise ValueError(
+                    f"Output record {index} has {key}={output_record[key]!r}; "
+                    f"expected {input_record[key]!r}"
+                )
+    return output_records
+
+
+def write_output_records(output_file: TextIO, input_records: list[dict[str, Any]], translations: list[str]) -> None:
+    if len(translations) != len(input_records):
+        raise ValueError(f"Output record count {len(translations)} does not match input record count {len(input_records)}")
+    for input_record, tgt_text in zip(input_records, translations):
+        output_record = {key: input_record[key] for key in INPUT_RECORD_KEYS}
+        output_record["tgt_text"] = normalize_segment_text(tgt_text)
+        output_file.write(json.dumps(output_record, ensure_ascii=False) + "\n")
 
 
 def parse_inference_args(
@@ -114,14 +167,14 @@ def parse_inference_args(
         "--input",
         type=argparse.FileType("r", encoding="utf-8", errors="replace"),
         default=sys.stdin,
-        help="Input file",
+        help="Input JSONL file with doc_id, paragraph_id, and src_text fields",
     )
     parser.add_argument(
         "-o",
         "--output",
         type=argparse.FileType("w", encoding="utf-8", errors="replace"),
         default=sys.stdout,
-        help="Output file",
+        help="Output JSONL file with tgt_text added to each input record",
     )
     parser.add_argument("-pb", "--progress", action="store_true", help="Show progress bar")
     parser.add_argument("--max-new-tokens", type=int, default=default_max_new_tokens)
@@ -358,7 +411,7 @@ def run_inference(args: argparse.Namespace, llm_cls: type[LLMBase] = LLMBase, *,
         max_new_tokens=args.max_new_tokens,
         max_new_tokens_over_input=args.max_new_tokens_over_input,
     )
-    lines = read_source_lines(args.input)
-    outputs = llm.translate_lines(args.lang_pair, lines, batch_size=args.batch_size)
-    validate_line_count(lines, outputs)
-    write_output_lines(args.output, outputs)
+    input_records = read_input_records(args.input)
+    source_texts = [record["src_text"] for record in input_records]
+    outputs = llm.translate_lines(args.lang_pair, source_texts, batch_size=args.batch_size)
+    write_output_records(args.output, input_records, outputs)

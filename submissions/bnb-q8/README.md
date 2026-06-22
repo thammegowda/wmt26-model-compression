@@ -27,5 +27,5 @@ bash compress.sh
 ## Run
 
 ```bash
-bash run.sh --lang-pair ces-deu --batch-size 1 --input input.txt --output output.txt
+bash run.sh --lang-pair ces-deu --batch-size 1 --input input.jsonl --output output.jsonl
 ```

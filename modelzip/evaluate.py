@@ -11,9 +11,11 @@ import json
 import logging as LOG
 import os
 import subprocess as sp
+import tempfile
 from pathlib import Path
 
 from modelzip.config import DEF_BATCH_SIZE, DEF_LANG_PAIRS, TASK_CONF, WORK_DIR, normalize_lang_pair
+from modelzip.submission import read_input_records, validate_output_records
 import shutil
 import time, resource
 
@@ -38,10 +40,60 @@ def get_run_cmd(model_dir: Path) -> list[str]:
     return ["bash", str(run_script)]
 
 
-def line_count(file: Path) -> int:
-    """Returns the number of lines in a file."""
-    with open(file, "r", encoding="utf-8") as f:
-        return sum(1 for _ in f)
+def _reference_text(record: dict) -> str | None:
+    refs = record.get("refs") or {}
+    ref = refs.get("refA")
+    if isinstance(ref, dict):
+        ref = ref.get("ref")
+    return ref if isinstance(ref, str) else None
+
+
+def _load_input_records(path: Path) -> list[dict]:
+    with open(path, "r", encoding="utf-8", errors="replace") as inp:
+        return read_input_records(inp)
+
+
+def validate_jsonl_output(input_file: Path, output_file: Path) -> None:
+    with open(output_file, "r", encoding="utf-8", errors="replace") as out:
+        validate_output_records(_load_input_records(input_file), out)
+
+
+def write_participant_input(source_file: Path, target_file: Path) -> None:
+    with open(target_file, "w", encoding="utf-8") as out:
+        for record in _load_input_records(source_file):
+            out.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def write_metric_files(input_file: Path, output_file: Path, ref_file: Path, out_dir: Path) -> tuple[Path, Path, Path] | None:
+    input_records = _load_input_records(input_file)
+    ref_by_key = {}
+    if not ref_file.exists() or ref_file.stat().st_size == 0:
+        return None
+    with open(ref_file, "r", encoding="utf-8", errors="replace") as refs_in:
+        for record in (json.loads(line) for line in refs_in if line.strip()):
+            ref_by_key[(record["doc_id"], record["paragraph_id"])] = _reference_text(record)
+
+    with open(output_file, "r", encoding="utf-8", errors="replace") as out:
+        output_records = validate_output_records(input_records, out)
+
+    src_lines, out_lines, ref_lines = [], [], []
+    for input_record, output_record in zip(input_records, output_records):
+        ref = ref_by_key.get((input_record["doc_id"], input_record["paragraph_id"]))
+        if ref is None:
+            continue
+        src_lines.append(input_record["src_text"])
+        out_lines.append(output_record["tgt_text"])
+        ref_lines.append(ref)
+    if not ref_lines:
+        return None
+
+    src_text = out_dir / "src.txt"
+    out_text = out_dir / "out.txt"
+    ref_text = out_dir / "ref.txt"
+    src_text.write_text("\n".join(src_lines) + "\n", encoding="utf-8")
+    out_text.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    ref_text.write_text("\n".join(ref_lines) + "\n", encoding="utf-8")
+    return src_text, out_text, ref_text
 
 
 def evaluate(
@@ -63,19 +115,21 @@ def evaluate(
         lang_dir = tests_dir / pair
         pair_test_names = test_names
         if not pair_test_names:
-            pair_test_names = [f.name.replace(f".{src}-{tgt}.{src}", "") for f in lang_dir.glob(f"*.{src}-{tgt}.{src}")]
+            pair_test_names = [f.name.replace(f".{src}-{tgt}.jsonl", "") for f in lang_dir.glob(f"*.{src}-{tgt}.jsonl")]
             LOG.info(f"No test names specified. Using all available tests for {pair}: {pair_test_names}")
         for test_name in pair_test_names:
-            src_file = lang_dir / f"{test_name}.{src}-{tgt}.{src}"
+            src_file = lang_dir / f"{test_name}.{src}-{tgt}.jsonl"
             if not src_file.exists():
                 LOG.info(f"{test_name=} is unavailable for {pair}. {src_file} does not exist. Skipping.")
                 continue
-            ref = lang_dir / f"{test_name}.{src}-{tgt}.{tgt}"
-            out = lang_dir / f"{test_name}.{src}-{tgt}.{tgt}.{model_name}.out.batch{batch_size}.run{run_num}"
+            ref = lang_dir / f"{test_name}.{src}-{tgt}.refs.jsonl"
+            out = lang_dir / f"{test_name}.{src}-{tgt}.{tgt}.{model_name}.out.batch{batch_size}.run{run_num}.jsonl"
             stats_file = out.with_suffix(out.suffix + ".stats.json")
             if not out.exists() or out.stat().st_size == 0:
                 tmp_file = out.with_suffix(out.suffix + ".tmp")
+                tmp_input_file = out.with_suffix(out.suffix + ".input.jsonl")
                 tmp_file.unlink(missing_ok=True)
+                write_participant_input(src_file, tmp_input_file)
 
                 run_cmd_full = run_cmd + [
                     "--lang-pair",
@@ -83,7 +137,7 @@ def evaluate(
                     "--batch-size",
                     str(batch_size),
                     "--input",
-                    str(src_file),
+                    str(tmp_input_file),
                     "--output",
                     str(tmp_file),
                 ]
@@ -102,15 +156,10 @@ def evaluate(
                     if not tmp_file.exists() or tmp_file.stat().st_size == 0:
                         LOG.error("Submission did not write output file %s", tmp_file)
                         continue
-                    expected_lines = line_count(src_file)
-                    observed_lines = line_count(tmp_file)
-                    if observed_lines != expected_lines:
-                        LOG.error(
-                            "Output line count mismatch for %s: expected=%d observed=%d",
-                            tmp_file,
-                            expected_lines,
-                            observed_lines,
-                        )
+                    try:
+                        validate_jsonl_output(src_file, tmp_file)
+                    except ValueError as exc:
+                        LOG.error("Invalid JSONL output for %s: %s", tmp_file, exc)
                         tmp_file.unlink(missing_ok=True)
                         continue
                     stats = {
@@ -141,6 +190,8 @@ def evaluate(
                 except sp.CalledProcessError as e:
                     LOG.error(f"Error running command: {e}")
                     continue
+                finally:
+                    tmp_input_file.unlink(missing_ok=True)
             for m in metrics:
                 if not ref.exists() or ref.stat().st_size == 0:
                     LOG.info("Skipping %s for %s because reference file is missing", m, out)
@@ -148,7 +199,12 @@ def evaluate(
                 score_file = out.with_suffix(out.suffix + f".{m}.score")
                 if not score_file.exists() or score_file.stat().st_size == 0:
                     try:
-                        score = get_score(src_file, out, ref, m)
+                        with tempfile.TemporaryDirectory() as tmp_dir:
+                            metric_files = write_metric_files(src_file, out, ref, Path(tmp_dir))
+                            if metric_files is None:
+                                LOG.info("Skipping %s for %s because references are missing", m, out)
+                                continue
+                            score = get_score(*metric_files, metric=m)
                         score_file.write_text(score)
                         LOG.info(f"{score_file.name} : {score}")
                     except sp.CalledProcessError as e:

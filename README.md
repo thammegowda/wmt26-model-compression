@@ -49,7 +49,7 @@ Organizer-provided submissions install the shared `modelzip` helper package into
 uv pip install --no-deps -e <organizer-repo-root>
 ```
 
-That package provides stable submission-facing utilities such as language-pair normalization, language names, prompt helpers, and line-oriented input/output validation. It is installed into each submission environment. Set `MODELZIP_SOURCE` only when the default local repo discovery is not enough. The value may be a local repo directory, wheel path, git URL, or package spec; local directories are installed editable.
+That package provides stable submission-facing utilities such as language-pair normalization, language names, prompt helpers, JSONL input/output validation, and Python inference base classes. It is installed into each submission environment. Set `MODELZIP_SOURCE` only when the default local repo discovery is not enough. The value may be a local repo directory, wheel path, git URL, or package spec; local directories are installed editable.
 
 `run.sh` is the official inference entry point:
 
@@ -57,16 +57,18 @@ That package provides stable submission-facing utilities such as language-pair n
 bash run.sh \
   --lang-pair ces-deu \
   --batch-size 8 \
-  --input input.txt \
-  --output output.txt
+  --input input.jsonl \
+  --output output.jsonl
 ```
 
-The script must produce exactly one output line for each input line. Logs and progress bars must go to stderr or separate files, never into the output file.
+The input is JSONL. Each record passed to `run.sh` has exactly these participant-visible keys: `doc_id`, `paragraph_id`, and `src_text`. Adjacent records with the same `doc_id` are paragraphs from the same document and may be used for document context.
+
+The output must be JSONL with exactly one record per input record, in the same order. Each output record must echo `doc_id`, `paragraph_id`, and `src_text`, and add `tgt_text`. Organizer data may contain `refs` or other metadata, but evaluation strips those keys before inference and uses them only for scoring. Logs and progress bars must go to stderr or separate files, never into the output file.
 
 The compatibility positional form is allowed but not required:
 
 ```bash
-bash run.sh ces-deu 8 < input.txt > output.txt
+bash run.sh ces-deu 8 < input.jsonl > output.jsonl
 ```
 
 ## Organizer Setup
@@ -89,7 +91,7 @@ Until WMT26 test data is released, this repo uses the WMT25 General MT blindset 
 https://data.statmt.org/wmt25/general-mt/wmt25.jsonl
 ```
 
-That file is source-only. It is suitable for setup, inference, line-count validation, and speed testing. For local reference-based scoring, the loader also supports WMT25 post-task reference records with either `refs.refA.ref` or `tgt_text.refA`.
+That file is source-only. It is suitable for setup, inference, JSONL contract validation, and speed testing. For local reference-based scoring, the loader also supports WMT25 post-task reference records with either `refs.refA.ref` or `tgt_text.refA`.
 
 ## Running Submissions
 

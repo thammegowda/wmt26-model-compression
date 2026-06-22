@@ -8,18 +8,13 @@ Inside each of those, it looks for language-pair folders named like
   SOURCE-TARGET/
 
 Within each language-pair folder, it:
-  • loads the TSV mapping file:  wmt25.SOURCE-TARGET.meta
-      - column 1: segment_id (string)
-      - column 2: line_number (int)
   • finds all system output files matching the pattern:
-      wmt25.SOURCE-TARGET.TARGET.MODEL_TYPE.out.batchYY.runZ
+      wmt25.SOURCE-TARGET.TARGET.MODEL_TYPE.out.batchYY.runZ.jsonl
 
 It groups the outputs by (MODEL_TYPE, runZ, batchYY).
 
-For each (MODEL_TYPE, runZ, batchYY) group, it reconstructs *document-level segments* by concatenating
-all lines that belong to each segment_id in the order specified by the meta file. If a line
-number in the meta is missing beyond the length of the concatenated system lines, an empty line
-is inserted.
+For each output file, it reads JSONL records and aligns `tgt_text` with references by
+(`doc_id`, `paragraph_id`).
 
 Finally, it computes COMET scores for each reconstructed segment using the *reference* text from
 https://raw.githubusercontent.com/wmt-conference/wmt25-general-mt/refs/heads/main/data/wmt25-genmt.jsonl
@@ -44,7 +39,6 @@ import re
 import statistics
 import sys
 import tempfile
-from collections import OrderedDict
 from typing import Dict, List, Tuple, Any, Optional
 
 import torch
@@ -54,7 +48,8 @@ from metricx24 import models
 
 
 EVAL_DIR_RE = re.compile(r"^eval(\d{2})-(.+)$")
-LANGPAIR_RE = re.compile(r"^([a-z]+)-([a-z]+)$")
+LANGPAIR_RE = re.compile(r"^([A-Za-z_]+)-([A-Za-z_]+)$")
+RecordKey = Tuple[str, Any]
 
 
 @dataclasses.dataclass
@@ -72,11 +67,31 @@ class OutputFile:
         return f"{self.src}-{self.tgt}"
 
 
-def load_references(jsonl_path: str) -> Tuple[Dict[str, str], Dict[str, List[str]]]:
-    """Loads source texts and references from a JSONL file.
-    Returns two `Dict`s, the first one for source texts and the second one for references,
-    where the keys are the document id.
-    """
+def _normalize_text(text: str) -> str:
+    return text.replace("\n", " ").strip()
+
+
+def _split_text(text: str) -> List[str]:
+    return [part for part in (_normalize_text(part) for part in text.strip().split("\n\n")) if part]
+
+
+def _reference_texts(obj: Dict[str, Any]) -> List[str]:
+    texts = []
+    for ref in (obj.get("refs") or {}).values():
+        if isinstance(ref, dict):
+            ref = ref.get("ref")
+        if isinstance(ref, str):
+            texts.append(ref)
+    tgt_text = obj.get("tgt_text") or {}
+    if isinstance(tgt_text, dict):
+        texts.extend(ref for ref in tgt_text.values() if isinstance(ref, str))
+    elif isinstance(tgt_text, str):
+        texts.append(tgt_text)
+    return texts
+
+
+def load_references(jsonl_path: str) -> Tuple[Dict[RecordKey, str], Dict[RecordKey, List[str]]]:
+    """Loads source texts and references keyed by (doc_id, paragraph_id)."""
 
     def open_stream(p: str):
         if p.startswith("http://") or p.startswith("https://"):
@@ -84,21 +99,27 @@ def load_references(jsonl_path: str) -> Tuple[Dict[str, str], Dict[str, List[str
             return urllib.request.urlopen(p)
         return open(p, "rb")
 
-    refs: Dict[str, List[str]] = {}
-    srcs: Dict[str, str] = {}
+    refs: Dict[RecordKey, List[str]] = {}
+    srcs: Dict[RecordKey, str] = {}
     with open_stream(jsonl_path) as fh:
         for bline in fh:
             if not bline.strip():
                 continue
             obj = json.loads(bline)
-            # segment id
             doc_id = obj["doc_id"]
-            # source
-            srcs[doc_id] = obj["src_text"]
-            # reference
-            refs[doc_id] = []
-            for ref_k in obj["refs"].keys():
-                refs[doc_id].append(obj["refs"][ref_k]["ref"])
+            if "paragraph_id" in obj:
+                key = (doc_id, obj["paragraph_id"])
+                srcs[key] = _normalize_text(obj["src_text"])
+                refs[key] = [_normalize_text(ref) for ref in _reference_texts(obj)]
+                continue
+
+            src_parts = _split_text(obj["src_text"])
+            ref_parts = [_split_text(ref) for ref in _reference_texts(obj)]
+            ref_parts = [parts for parts in ref_parts if len(parts) == len(src_parts)]
+            for paragraph_id, src in enumerate(src_parts, start=1):
+                key = (doc_id, paragraph_id)
+                srcs[key] = src
+                refs[key] = [parts[paragraph_id - 1] for parts in ref_parts]
     return srcs, refs
 
 
@@ -135,7 +156,7 @@ def parse_outfiles(
     else:
         run_regex = f"run{run_id}"
     OUTFILE_RE = re.compile(
-        rf"^wmt25\.{source_lang}-{tgt_lang}\.{tgt_lang}\.([A-Za-z0-9_\-.]+)\.out\.batch(\d+)\.{run_regex}$"
+        rf"^wmt25\.{source_lang}-{tgt_lang}\.{tgt_lang}\.([A-Za-z0-9_\-.]+)\.out\.batch(\d+)\.{run_regex}\.jsonl$"
     )
     for name in os.listdir(langpair_path):
         m = OUTFILE_RE.match(name)
@@ -158,46 +179,18 @@ def parse_outfiles(
     return sorted(files, key=lambda f: (f.model_name, f.model_type, f.src, f.tgt, f.run, f.batch))
 
 
-# -------------------------------
-# Segment reconstruction
-# -------------------------------
-
-def load_meta(meta_path: str) -> Dict[str, List[int]]:
-    seg2lines: Dict[str, List[int]] = OrderedDict()
-    with open(meta_path, 'r', encoding='utf-8') as fh:
-        for line in fh:
-            line = line.strip()
-            parts = line.split("\t")
-            if len(parts) < 2:
-                continue
-            seg_id = parts[0]
-            idx = int(parts[1])
-            if seg_id not in seg2lines:
-                seg2lines[seg_id] = []
-            seg2lines[seg_id].append(idx)
-    return seg2lines
-
-
-def read_lines(path: str) -> List[str]:
+def load_outputs(path: str) -> Dict[RecordKey, str]:
+    outputs: Dict[RecordKey, str] = {}
     with open(path, 'r', encoding='utf-8', errors='replace') as fh:
-        return [ln.rstrip('\n') for ln in fh]
-
-
-def reconstruct_segments(seg2lines: Dict[str, List[int]], lines: List[str]) -> Dict[str, str]:
-    seg2text: Dict[str, str] = {}
-    segment_lines_start_idx = 0
-    for seg, idxs in seg2lines.items():
-        segment_lines = lines[segment_lines_start_idx:segment_lines_start_idx + len(idxs)]
-        buf: List[str] = []
-        for i in range(max(idxs)):
-            idx = i + 1
-            if idx in idxs:
-                buf.append(segment_lines[idxs.index(idx)])
-            else:
-                buf.append('')  # missing line -> empty line
-        seg2text[seg] = "\n".join(buf)
-        segment_lines_start_idx += len(idxs)
-    return seg2text
+        for line_number, line in enumerate(fh, start=1):
+            if not line.strip():
+                continue
+            obj = json.loads(line)
+            for key in ("doc_id", "paragraph_id", "tgt_text"):
+                if key not in obj:
+                    raise ValueError(f"{path}:{line_number} missing {key}")
+            outputs[(obj["doc_id"], obj["paragraph_id"])] = _normalize_text(obj["tgt_text"])
+    return outputs
 
 
 class CometScore:
@@ -316,35 +309,31 @@ def main():
         for lp in find_langpair_dirs(eval_dir_path):
             src, tgt = lp.split('-', 1)
             langpair_path = os.path.join(eval_dir_path, lp)
-            meta_name = f"wmt25.{src}-{tgt}.meta"
-            meta_path = os.path.join(langpair_path, meta_name)
-            if not os.path.exists(meta_path):
-                sys.exit(f"[ERROR] Missing meta for {eval_dirname}/{lp}: {meta_name}")
-            seg2lines = load_meta(meta_path)
             outfiles = parse_outfiles(langpair_path, src, tgt, model_name, args.run)
             if not outfiles:
                 print(f"[WARN] No output files in {eval_dirname}/{lp}")
                 continue
 
             for outfile in outfiles:
-                sys_lines = read_lines(outfile.path)
-                seg2text = reconstruct_segments(seg2lines, sys_lines)
+                sys_texts = load_outputs(outfile.path)
 
                 # Build aligned arrays for scoring
                 src_texts = []
                 hypo_texts = []
                 ref_texts = []
-                for k in seg2text.keys():
-                    if k.split("#")[1] == "_testsuite_":
+                for key, hypo in sys_texts.items():
+                    doc_id, _ = key
+                    if "_#_testsuite_#_" in str(doc_id):
                         continue
-                    splitted_hypo = seg2text[k].split("\n\n")
-                    splitted_ref = refs_map[k][0].split("\n\n")
-                    splitted_src = srcs_map[k].split("\n\n")
-                    assert len(splitted_hypo) == len(splitted_ref) == len(splitted_src)
-                    for h, r, s in zip(splitted_hypo, splitted_ref, splitted_src):
-                        hypo_texts.append(h)
-                        ref_texts.append(r)
-                        src_texts.append(s)
+                    if key not in srcs_map or not refs_map.get(key):
+                        continue
+                    hypo_texts.append(hypo)
+                    ref_texts.append(refs_map[key][0])
+                    src_texts.append(srcs_map[key])
+
+                if not hypo_texts:
+                    print(f"[WARN] No aligned references for {outfile}")
+                    continue
 
                 print(
                     f"Scoring {len(hypo_texts)} segments for {outfile} ...")
