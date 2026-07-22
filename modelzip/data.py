@@ -112,9 +112,15 @@ class Wmt25ReferenceData(WmtJsonlData):
 
 @dataclass
 class LocalParagraphData:
-    """Read pre-split paragraph-level JSONL files (doc_id, paragraph_id, src_text, refs)."""
+    """Read pre-split paragraph-level JSONL files (doc_id, paragraph_id, src_text, refs).
+
+    ``limit`` caps the number of records returned (used by the smoke test to take
+    only the first few examples per language pair). Files without ``refs`` (e.g.
+    the source-only WMT26 sets) yield a ``None`` reference for each row.
+    """
 
     path: str | Path
+    limit: int | None = None
 
     def __call__(self) -> list[list[str | None]]:
         path = Path(self.path)
@@ -125,6 +131,8 @@ class LocalParagraphData:
             for line in fh:
                 if not line.strip():
                     continue
+                if self.limit is not None and len(rows) >= self.limit:
+                    break
                 rec = json.loads(line)
                 src = rec["src_text"].replace("\n", " ").strip()
                 refs = rec.get("refs") or {}

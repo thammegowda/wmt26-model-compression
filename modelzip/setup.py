@@ -10,7 +10,7 @@ from modelzip.config import DEF_LANG_PAIRS, TASK_CONF, WORK_DIR, normalize_lang_
 LOG.basicConfig(level=LOG.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 
-def setup_eval(work_dir: Path, langs=None):
+def setup_eval(work_dir: Path, langs=None, tests=None):
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
     tests_dir = work_dir / "tests"
@@ -21,6 +21,8 @@ def setup_eval(work_dir: Path, langs=None):
         lang_dir = tests_dir / lang_pair
         lang_dir.mkdir(parents=True, exist_ok=True)
         for test_name, get_fn in TASK_CONF["langs"][lang_pair].items():
+            if tests and test_name not in tests:
+                continue
             src_file = lang_dir / f"{test_name}.{src}-{tgt}.{src}"
             ref_file = lang_dir / f"{test_name}.{src}-{tgt}.{tgt}"
             meta_file = lang_dir / f"{test_name}.{src}-{tgt}.meta"
@@ -63,6 +65,10 @@ def main():
     parser.add_argument("-w", "--work", type=Path, default=WORK_DIR, help="Work directory")
     parser.add_argument("-l", "--langs", nargs="+", help="Language pairs to setup")
     parser.add_argument(
+        "--tests", nargs="+", default=None,
+        help="Only prepare these test names (e.g. smoke smoke26); default: all configured tests",
+    )
+    parser.add_argument(
         "-t",
         "--task",
         choices=["eval"],
@@ -70,7 +76,7 @@ def main():
         help="Compatibility option; root setup only prepares evaluation data",
     )
     args = parser.parse_args()
-    setup_eval(work_dir=args.work, langs=args.langs)
+    setup_eval(work_dir=args.work, langs=args.langs, tests=args.tests)
 
 
 if __name__ == "__main__":
