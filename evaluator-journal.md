@@ -97,3 +97,32 @@ The remediations are now scripted so the run is repeatable on any host:
   (default `/tmp/sanity`); exits non-zero if any package does not PASS.
 Verified: `run_all_sanity.sh` reproduces PASS for tmu-onono and fbk with no
 manually-exported env.
+
+## Phase-1 QE evaluation (reference-free, wmt22-cometkiwi-da)
+
+Driver: `evals/eval_qe.sh` runs each package once at a fixed batch on a real
+test set for its supported directions, stores translations under the work dir,
+and scores them reference-free with `pymarian-eval`. Ran on wmt25 (has refs, for
+sanity of the QE numbers) and on the **wmt26 blind set** (source-only).
+
+### wmt26 blind-set failures found + fixes (2 root causes)
+
+1. **vicomtech (all 6 packages): vLLM `max_model_len` hardcoded to 1024.**
+   Their `inference.py` defaults `--max-model-len 1024`; wmt26 paragraphs are
+   longer (measured max source tokens: ces-deu 1749, eng-zho_Hans 1243,
+   eng-ara_EG 1243), so vLLM rejected every request
+   (`maximum context length is 1024 tokens ... prompt contains at least 1025`).
+   This did not surface in sanity (short smoke inputs) or on wmt25.
+   *Fix:* their `run.sh` now passes `--max-model-len 8192` alongside the existing
+   `--gpu-memory-utilization 0.9`. Participant-side packaging issue (context
+   window too small for real paragraph inputs).
+
+2. **baseline--uncompressed and baseline--bnb-q8: CUDA OOM at batch 64 on the
+   longest direction (ces-deu, up to 5129 chars).** The two largest baselines
+   ran out of 80 GB on the long-paragraph batch (`Tried to allocate 3.26 GiB ...
+   ~3 GiB free`); bnb-q4 and the other two directions fit. QE is batch-invariant,
+   so *fix:* re-run only ces-deu for those two at batch 16 (`PAIRS=ces-deu
+   BATCH=16`). Harness/throughput tuning, not a quality difference.
+
+`eval_qe.sh` gained a `PAIRS` env override so a single failed direction can be
+re-run without editing the per-model direction map.

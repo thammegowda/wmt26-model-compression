@@ -13,7 +13,7 @@
 #   bash evals/eval_qe.sh                  # all packages in COLLECTED
 #   bash evals/eval_qe.sh <dir> [<dir>..]  # only the given package dirs
 #
-# Overridable env: COLLECTED, WORK, BACKUP, OUT, NGPU, BATCH, TESTSET, METRICS.
+# Overridable env: COLLECTED, WORK, BACKUP, OUT, NGPU, BATCH, TESTSET, METRICS, PAIRS.
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -37,7 +37,9 @@ BASE_GEMMA3="${BASE_GEMMA3:-$COLLECTED/baseline--uncompressed/workdir/model}"
 export HF_HUB_CACHE="${HF_HUB_CACHE:-$HOME/.cache/huggingface/hub}"
 
 # Directions each model supports (space-separated; canonical tokens).
+# PAIRS env overrides the mapping (e.g. re-run one failed direction).
 pairs_for() {
+    [[ -n "${PAIRS:-}" ]] && { echo "$PAIRS"; return; }
     local all="ces-deu eng-zho_Hans eng-ara_EG"
     case "$1" in
         *_ces-deu)                                         echo "ces-deu" ;;
