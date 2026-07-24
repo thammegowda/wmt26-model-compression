@@ -58,6 +58,9 @@ base_model_for() {
     esac
 }
 
+# ESTS gpt-oss inference.py rejects batch > 16; others use $BATCH.
+batch_for() { case "$1" in ests--*) echo 16 ;; *) echo "$BATCH" ;; esac; }
+
 # --- pymarian auto-install -------------------------------------------------
 if ! command -v pymarian-eval >/dev/null 2>&1; then
     echo "[eval_qe] pymarian-eval missing; installing $PYMARIAN_WHEEL" >&2
@@ -83,9 +86,10 @@ run_one() {
     local pairs; pairs="$(pairs_for "$id")"
     local pybin; pybin="$(python_bin_for "$id")"
     local basedir; basedir="$(base_model_for "$id")"
+    local batch; batch="$(batch_for "$id")"
     local log="$OUT/$id.log"
     local t0; t0=$(date +%s)
-    echo "[start] gpu=$gpu batch=$BATCH pairs='$pairs' $id" >&2
+    echo "[start] gpu=$gpu batch=$batch pairs='$pairs' $id" >&2
 
     # Ensure the submission venv exists (built during sanity); rebuild if missing.
     if [[ ! -x "$dir/.venv/bin/python" ]]; then
@@ -103,7 +107,7 @@ run_one() {
     # shellcheck disable=SC2086
     if CUDA_VISIBLE_DEVICES="$gpu" BASE_MODEL_DIR="$basedir" \
        timeout "$PER_TIMEOUT" python -m modelzip.evaluate \
-         -w "$WORK" -B "$BACKUP" -b "$BATCH" -r 1 -M $METRICS \
+         -w "$WORK" -B "$BACKUP" -b "$batch" -r 1 -M $METRICS \
          -m "$dir" -l $pairs -t "$TESTSET" >>"$log" 2>&1; then
         st="DONE"
     else
@@ -116,7 +120,7 @@ run_one() {
         local missing=0 p tgt of
         for p in $pairs; do
             tgt="${p#*-}"
-            of="$WORK/tests/$p/$TESTSET.$p.$tgt.$id.out.batch$BATCH.run1"
+            of="$WORK/tests/$p/$TESTSET.$p.$tgt.$id.out.batch$batch.run1"
             [[ -s "$of" ]] || missing=$((missing + 1))
         done
         [[ $missing -eq 0 ]] || st="NO_OUTPUT($missing)"
@@ -152,12 +156,12 @@ done
 wait
 
 # --- QE score summary ------------------------------------------------------
-echo "=================== QE (${METRICS}) — ${TESTSET} b${BATCH} ===================" >&2
-python3 - "$WORK/tests" "$BATCH" "$METRICS" >&2 <<'PY'
+echo "=================== QE (${METRICS}) — ${TESTSET} ===================" >&2
+python3 - "$WORK/tests" "$TESTSET" "$METRICS" >&2 <<'PY'
 import sys, glob, os
-tests_dir, batch, metric = sys.argv[1], sys.argv[2], sys.argv[3].split()[0]
+tests_dir, testset, metric = sys.argv[1], sys.argv[2], sys.argv[3].split()[0]
 rows = []
-for sc in glob.glob(os.path.join(tests_dir, "*", f"*.out.batch{batch}.run1.{metric}.score")):
+for sc in glob.glob(os.path.join(tests_dir, "*", f"{testset}.*.out.batch*.run1.{metric}.score")):
     base = os.path.basename(sc)
     pair = os.path.basename(os.path.dirname(sc))
     # <test>.<src>-<tgt>.<tgt>.<model>.out.batchN.run1.<metric>.score
