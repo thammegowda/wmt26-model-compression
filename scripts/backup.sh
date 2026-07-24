@@ -17,8 +17,12 @@ SUB_DIRS=("collected" "submissions")
 for subdir in "${SUB_DIRS[@]}"; do
     local_dir="$LOCAL_ROOT/$subdir"
     remote_dir="$REMOTE_ROOT/$subdir"
+    if [ ! -d "$local_dir" ]; then
+        log "SKIP (no local dir): $local_dir"
+        continue
+    fi
     log "Syncing  $local_dir --> $remote_dir"
-    cmd="azcopy sync $local_dir $remote_dir --exclude-regex '.*/\.venv/.*;.*/__pycache__/.*;.*\.RESOLVED$'"
+    cmd="azcopy sync $local_dir $remote_dir --compare-hash=MD5 --put-md5 --local-hash-storage-mode HiddenFiles --exclude-regex '.*/\.venv/.*;.*/\.venv-compress/.*;.*/\.uv-cache/.*;.*/__pycache__/.*;.*\.RESOLVED$'"
     if [ $DRY_RUN -eq 1 ]; then
         cmd+=" --dry-run"        
     fi
