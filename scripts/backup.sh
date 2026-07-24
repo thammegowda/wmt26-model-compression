@@ -13,7 +13,7 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $@" >&2 
 }
 
-SUB_DIRS=("collected" "submissions")
+SUB_DIRS=("collected" "submissions" "eval-workdir")
 for subdir in "${SUB_DIRS[@]}"; do
     local_dir="$LOCAL_ROOT/$subdir"
     remote_dir="$REMOTE_ROOT/$subdir"
@@ -22,7 +22,7 @@ for subdir in "${SUB_DIRS[@]}"; do
         continue
     fi
     log "Syncing  $local_dir --> $remote_dir"
-    cmd="azcopy sync $local_dir $remote_dir --compare-hash=MD5 --put-md5 --local-hash-storage-mode HiddenFiles --exclude-regex '.*/\.venv/.*;.*/\.venv-compress/.*;.*/\.uv-cache/.*;.*/__pycache__/.*;.*\.RESOLVED$'"
+    cmd="azcopy sync $local_dir $remote_dir --compare-hash=MD5 --put-md5 --local-hash-storage-mode HiddenFiles --exclude-regex '.*/\.venv/.*;.*/\.venv-compress/.*;.*/\.uv-cache/.*;.*/__pycache__/.*;.*/eval-workdir/backup/.*;.*\.RESOLVED$'"
     if [ $DRY_RUN -eq 1 ]; then
         cmd+=" --dry-run"        
     fi

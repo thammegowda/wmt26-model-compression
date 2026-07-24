@@ -33,8 +33,9 @@ RESULTS="$OUT/results.tsv"
 
 # Direction (canonical token) each model actually supports.
 pair_for() {
-    case "$1" in
-        *gptoss-arz-*|*--en-ar-mbr)                          echo eng-ara_EG ;;
+    case "$1" in        *_ces-deu)                                              echo ces-deu ;;
+        *_eng-ara)                                              echo eng-ara_EG ;;
+        *_eng-zho)                                              echo eng-zho_Hans ;;        *gptoss-arz-*|*--en-ar-mbr)                          echo eng-ara_EG ;;
         *gptoss-zho-*|alonso--*|arc-ilsp--int4|slicers--*)   echo eng-zho_Hans ;;
         *)                                                   echo ces-deu ;;
     esac

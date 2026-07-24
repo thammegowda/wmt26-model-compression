@@ -40,6 +40,9 @@ export HF_HUB_CACHE="${HF_HUB_CACHE:-$HOME/.cache/huggingface/hub}"
 pairs_for() {
     local all="ces-deu eng-zho_Hans eng-ara_EG"
     case "$1" in
+        *_ces-deu)                                         echo "ces-deu" ;;
+        *_eng-ara)                                         echo "eng-ara_EG" ;;
+        *_eng-zho)                                         echo "eng-zho_Hans" ;;
         alonso--*|arc-ilsp--int4|slicers--*|*gptoss-zho-*) echo "eng-zho_Hans" ;;
         arc-ilsp--en-ar-mbr|*gptoss-arz-*)                 echo "eng-ara_EG" ;;
         arc-ilsp--vocaball-int4)                           echo "ces-deu eng-ara_EG" ;;
@@ -107,6 +110,17 @@ run_one() {
         local rc=$?
         [[ $rc -eq 124 ]] && st="TIMEOUT" || st="FAIL"
     fi
+    # modelzip.evaluate exits 0 even if a submission's inference errored; verify
+    # that an output file was produced for every requested pair.
+    if [[ "$st" == "DONE" ]]; then
+        local missing=0 p tgt of
+        for p in $pairs; do
+            tgt="${p#*-}"
+            of="$WORK/tests/$p/$TESTSET.$p.$tgt.$id.out.batch$BATCH.run1"
+            [[ -s "$of" ]] || missing=$((missing + 1))
+        done
+        [[ $missing -eq 0 ]] || st="NO_OUTPUT($missing)"
+    fi
     printf '%s\t%s\t%s\t%ss\n' "$id" "$st" "$pairs" "$(( $(date +%s) - t0 ))" >> "$RESULTS"
     echo "[done ] $id -> $st" >&2
 }
@@ -147,7 +161,7 @@ for sc in glob.glob(os.path.join(tests_dir, "*", f"*.out.batch{batch}.run1.{metr
     base = os.path.basename(sc)
     pair = os.path.basename(os.path.dirname(sc))
     # <test>.<src>-<tgt>.<tgt>.<model>.out.batchN.run1.<metric>.score
-    model = base.split(".out.batch")[0].split(".")[-1]
+    model = ".".join(base.split(".out.batch")[0].split(".")[3:])
     try:
         val = float(open(sc).read().strip())
     except Exception:
