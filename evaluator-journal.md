@@ -85,3 +85,15 @@ Fix ownership for the report:
   (no isolated venv; miscalibrated gpu-mem-util); fbk (python3.10 pin);
   tmu-onono (hardcoded `/data`, gated base assumption); pare4bit-gemma4
   (transient cutlass/vLLM install).
+
+### Reproducing the sanity run
+The remediations are now scripted so the run is repeatable on any host:
+- `bash evals/prepare_host.sh` — provisions python3.10 (uv), python3.12-venv
+  (apt), verifies a local gemma-3-12b-it base, and checks the modelzip pin.
+- `bash evals/run_all_sanity.sh` — schedules all packages one-per-GPU, choosing
+  a supported direction per model and injecting the per-model env
+  (`MODELZIP_SOURCE`, `PYTHON_BIN` for fbk, `BASE_MODEL_DIR` for tmu-onono,
+  `UV_VENV_CLEAR`, clean `.venv`). Writes `results.tsv` + per-model logs to `OUT`
+  (default `/tmp/sanity`); exits non-zero if any package does not PASS.
+Verified: `run_all_sanity.sh` reproduces PASS for tmu-onono and fbk with no
+manually-exported env.
