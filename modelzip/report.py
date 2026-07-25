@@ -43,10 +43,10 @@ def _model_from(basename: str) -> str:
 
 def short(metric: str) -> str:
     if "cometkiwi-da-xxl" in metric:
-        return "ck-xxl"
+        return "ck_xxl"
     if "metricx" in metric:
-        return "mx-xxl"
-    return metric
+        return "mx_xxl"
+    return metric.replace("-", "_").replace(".", "_")
 
 
 def load_qe(scores_dir: Path, testset: str, metric: str) -> dict:
@@ -130,103 +130,161 @@ def _config_path(collected: Path, system: str):
     return None
 
 
+def classify(collected: Path, system: str):
+    """Return (track, base_type). 'constrained' == derived from the gemma-3-12b
+    baseline; 'unconstrained' == a different base model (Gemma-4, GPT-OSS,
+    TildeOpen/Llama, ...), for which size/quality is not a fair compression
+    comparison against our baseline."""
+    if collected:
+        p = _config_path(collected, system)
+        if p:
+            try:
+                j = json.load(open(p))
+            except (OSError, json.JSONDecodeError):
+                j = {}
+            mt = j.get("model_type") or (j.get("text_config") or {}).get("model_type") or ""
+            archs = " ".join(j.get("architectures") or [])
+            if mt in CONSTRAINED_TYPES or "Gemma3" in archs:
+                return "constrained", (mt or "gemma3")
+            if mt or archs:
+                return "unconstrained", (mt or archs)
+        readme = collected / system / "README.md"
+        if readme.is_file():
+            txt = readme.read_text(errors="replace").lower()
+            if "gemma-3" in txt or "gemma3" in txt:
+                return "constrained", "gemma3"
+            for o in ("gemma-4", "gemma4", "gpt-oss", "gptoss", "tildeopen", "qwen"):
+                if o in txt:
+                    return "unconstrained", o
+    return "constrained", "unknown"
+
+
 def track_of(collected: Path, system: str) -> str:
-    """'constrained' if derived from the gemma-3-12b baseline, else 'unconstrained'.
-
-    Unconstrained submissions may start from a different base model (e.g. Gemma-4,
-    GPT-OSS, TildeOpen/Llama), so their size/quality is NOT a fair compression
-    comparison against our gemma-3-12b baseline.
-    """
-    if not collected:
-        return "constrained"
-    p = _config_path(collected, system)
-    if p:
-        try:
-            j = json.load(open(p))
-        except (OSError, json.JSONDecodeError):
-            j = {}
-        mt = j.get("model_type") or (j.get("text_config") or {}).get("model_type") or ""
-        archs = " ".join(j.get("architectures") or [])
-        if mt in CONSTRAINED_TYPES or "Gemma3" in archs:
-            return "constrained"
-        if mt or archs:
-            return "unconstrained"
-    readme = collected / system / "README.md"
-    if readme.is_file():
-        txt = readme.read_text(errors="replace").lower()
-        if "gemma-3" in txt or "gemma3" in txt:
-            return "constrained"
-        if any(o in txt for o in ("gemma-4", "gemma4", "gpt-oss", "gptoss", "tildeopen", "qwen")):
-            return "unconstrained"
-    return "constrained"
+    return classify(collected, system)[0]
 
 
-def _emit_table(title, systems, pair, testset, metrics, qe, base_size, walls, rss, chars, collected, show_comp):
-    if not systems:
-        return
-    primary = metrics[0]
-    worst = float("inf") if lower_is_better(primary) else float("-inf")
-    systems = sorted(systems, key=lambda s: qe[primary].get((s, pair), worst),
-                     reverse=not lower_is_better(primary))
-    cols = ["#", "system"]
-    for m in metrics:
-        cols += [short(m), "Δ"]
-    cols += ["size GB"] + (["comp%"] if show_comp else []) + ["thrpt ch/s", "b1 lat s", "peak GB"]
-    sep = " | "
-    print(f"#### {pair} — {title}")
-    print(sep.join(cols))
-    print(sep.join(["---"] * len(cols)))
-    for i, s in enumerate(systems, 1):
-        row = [str(i), s + (" ⟵" if s == ANCHOR else "")]
-        for m in metrics:
-            v = qe[m].get((s, pair))
-            a = qe[m].get((ANCHOR, pair))
-            d = None if (v is None or a is None) else v - a
-            row += [fmt(v), fmt(d, "{:+.4f}")]
-        sz = model_size(collected, s)
-        row += [fmt(sz / 1e9 if sz else None, "{:.1f}")]
-        if show_comp:
-            comp = None if (sz is None or not base_size) else 100.0 * sz / base_size
-            row += [fmt(comp, "{:.0f}")]
-        thr = lat = peak = None
-        sbatches = [b for (mm, b) in walls if mm == s]
-        if sbatches:
-            bmax = max(sbatches)
-            if walls.get((s, bmax)) and chars:
-                thr = chars / walls[(s, bmax)]
-            if walls.get((s, 1)):
-                lat = walls[(s, 1)]
-            if rss.get((s, bmax)):
-                peak = rss[(s, bmax)] / (1024 * 1024)  # KB -> GB
-        row += [fmt(thr, "{:.0f}"), fmt(lat, "{:.1f}"), fmt(peak, "{:.1f}")]
-        print(sep.join(row))
-    print()
-
-
-def report(work_dir: Path, collected: Path, testset: str, metrics: list):
-    work_dir = Path(work_dir)
+def build_rows(work_dir: Path, collected: Path, testset: str, metrics: list) -> list:
+    """One dict per (system, pair): quality + size + speed + memory + track."""
     scores_dir = work_dir / "scores"
     tests_dir = work_dir / "tests"
     qe = {m: load_qe(scores_dir, testset, m) for m in metrics}
     base_size = model_size(collected, ANCHOR)
-    primary = metrics[0]
-    tracks = {}
-
+    meta, rows = {}, []
     for pair in PAIRS:
         walls, rss = load_speed(tests_dir, testset, pair)
         chars = workload_chars(tests_dir, testset, pair)
-        systems = {model for (model, p) in qe[primary] if p == pair}
-        if not systems:
+        systems = {model for (model, p) in qe[metrics[0]] if p == pair}
+        for s in sorted(systems):
+            track, base_type = meta.setdefault(s, classify(collected, s))
+            sz = model_size(collected, s)
+            comp = None if (sz is None or not base_size or track != "constrained") else 100.0 * sz / base_size
+            thr = lat = peak = None
+            sbatches = [b for (mm, b) in walls if mm == s]
+            if sbatches:
+                bmax = max(sbatches)
+                if walls.get((s, bmax)) and chars:
+                    thr = chars / walls[(s, bmax)]
+                if walls.get((s, 1)):
+                    lat = walls[(s, 1)]
+                if rss.get((s, bmax)):
+                    peak = rss[(s, bmax)] / (1024 * 1024)  # KB -> GB
+            row = {"system": s, "track": track, "base_type": base_type, "pair": pair,
+                   "size_bytes": sz, "size_gb": (sz / 1e9 if sz else None), "comp_pct": comp,
+                   "thrpt_chars_per_s": thr, "batch1_latency_s": lat, "peak_rss_gb": peak}
+            for m in metrics:
+                v = qe[m].get((s, pair))
+                a = qe[m].get((ANCHOR, pair))
+                row[short(m)] = v
+                row[short(m) + "_vs_base"] = None if (v is None or a is None) else v - a
+            rows.append(row)
+    return rows
+
+
+def print_markdown(rows: list, metrics: list):
+    primary = short(metrics[0])
+    lower = lower_is_better(metrics[0])
+    worst = float("inf") if lower else float("-inf")
+    by_pair = {}
+    for r in rows:
+        by_pair.setdefault(r["pair"], []).append(r)
+    sep = " | "
+    for pair in PAIRS:
+        prs = by_pair.get(pair)
+        if not prs:
             continue
-        for s in systems:
-            tracks.setdefault(s, track_of(collected, s))
-        con = [s for s in systems if tracks[s] == "constrained"]
-        unc = [s for s in systems if tracks[s] == "unconstrained"]
-        print(f"### {pair}  ({testset})\n")
-        _emit_table("Constrained (compress gemma-3-12b; Δ/comp% vs baseline--uncompressed)",
-                    con, pair, testset, metrics, qe, base_size, walls, rss, chars, collected, show_comp=True)
-        _emit_table("Unconstrained (different base model; NOT a compression ratio vs our baseline)",
-                    unc, pair, testset, metrics, qe, base_size, walls, rss, chars, collected, show_comp=False)
+        print(f"### {pair}\n")
+        for track, title, show_comp in (
+            ("constrained", "Constrained (compress gemma-3-12b; Δ/comp% vs baseline--uncompressed)", True),
+            ("unconstrained", "Unconstrained (different base model; NOT a compression ratio)", False),
+        ):
+            sub = [r for r in prs if r["track"] == track]
+            if not sub:
+                continue
+            sub.sort(key=lambda r: (r[primary] if r.get(primary) is not None else worst), reverse=not lower)
+            cols = ["#", "system"]
+            for m in metrics:
+                cols += [short(m), "Δ"]
+            cols += ["size GB"] + (["comp%"] if show_comp else []) + ["thrpt ch/s", "b1 lat s", "peak GB"]
+            print(f"#### {pair} — {title}")
+            print(sep.join(cols))
+            print(sep.join(["---"] * len(cols)))
+            for i, r in enumerate(sub, 1):
+                line = [str(i), r["system"] + (" ⟵" if r["system"] == ANCHOR else "")]
+                for m in metrics:
+                    line += [fmt(r.get(short(m))), fmt(r.get(short(m) + "_vs_base"), "{:+.4f}")]
+                line += [fmt(r.get("size_gb"), "{:.1f}")]
+                if show_comp:
+                    line += [fmt(r.get("comp_pct"), "{:.0f}")]
+                line += [fmt(r.get("thrpt_chars_per_s"), "{:.0f}"),
+                         fmt(r.get("batch1_latency_s"), "{:.1f}"),
+                         fmt(r.get("peak_rss_gb"), "{:.1f}")]
+                print(sep.join(line))
+            print()
+
+
+def _tsv_val(v):
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return f"{v:.6g}"
+    return str(v)
+
+
+def write_tsv(rows: list, path: Path, metrics: list):
+    """Wide: one row per (system, pair) with every metric + size/speed/memory."""
+    cols = ["system", "track", "base_type", "pair"]
+    for m in metrics:
+        cols += [short(m), short(m) + "_vs_base"]
+    cols += ["size_bytes", "size_gb", "comp_pct", "thrpt_chars_per_s", "batch1_latency_s", "peak_rss_gb"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        f.write("\t".join(cols) + "\n")
+        for r in rows:
+            f.write("\t".join(_tsv_val(r.get(c)) for c in cols) + "\n")
+
+
+def write_long_tsv(rows: list, path: Path, metrics: list):
+    """Tidy long: one row per (system, pair, metric) — handy for faceted plots."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        f.write("\t".join(["system", "track", "base_type", "pair", "metric", "score", "vs_base"]) + "\n")
+        for r in rows:
+            for m in metrics:
+                f.write("\t".join([r["system"], r["track"], r["base_type"], r["pair"], short(m),
+                                   _tsv_val(r.get(short(m))), _tsv_val(r.get(short(m) + "_vs_base"))]) + "\n")
+
+
+def report(work_dir: Path, collected: Path, testset: str, metrics: list, out_dir: Path = None):
+    work_dir = Path(work_dir)
+    rows = build_rows(work_dir, collected, testset, metrics)
+    print_markdown(rows, metrics)
+    if out_dir:
+        out_dir = Path(out_dir)
+        wide = out_dir / f"summary.{testset}.tsv"
+        long = out_dir / f"metrics_long.{testset}.tsv"
+        write_tsv(rows, wide, metrics)
+        write_long_tsv(rows, long, metrics)
+        print(f"[report] wrote {wide} and {long} ({len(rows)} rows)")
 
 
 def main():
@@ -237,8 +295,12 @@ def main():
                         help="Collected submissions dir (for model sizes)")
     parser.add_argument("-t", "--testset", default="wmt26", help="Test set to report")
     parser.add_argument("-M", "--metrics", nargs="+", default=DEFAULT_METRICS, help="QE metrics (cache names)")
+    repo_root = Path(__file__).resolve().parents[1]
+    parser.add_argument("-o", "--out-dir", type=Path, default=repo_root / "results",
+                        help="Directory for results/*.tsv (pass '' to skip)")
     args = parser.parse_args()
-    report(args.work, args.collected, args.testset, args.metrics)
+    out_dir = args.out_dir if str(args.out_dir) not in ("", ".") else None
+    report(args.work, args.collected, args.testset, args.metrics, out_dir=out_dir)
 
 
 if __name__ == "__main__":
