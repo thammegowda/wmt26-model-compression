@@ -1,0 +1,122 @@
+# WMT26 Model-Compression Leaderboard — wmt26
+
+Reference-free QE on the blind set. **Δ** = system − `baseline--uncompressed` (same direction).
+
+- **ck_xxl** = cometkiwi-XXL (higher is better) · **mx_xxl** = MetricX-24-XXL (lower is better)
+- **size GB** on-disk weights · **comp%** = size vs baseline (constrained only) · **thrpt ch/s** = source chars ÷ wall-time at the largest measured batch · **b1 lat s** = batch-1 single-stream wall-time on ces-deu (speed track) · **peak GB** = peak host RSS
+- Tracks: **constrained** = compress gemma-3-12b · **unconstrained** = different base model (shown separately)
+
+## ces-deu
+
+### ces-deu — Constrained (compress gemma-3-12b; Δ/comp% vs baseline--uncompressed)
+
+| # | system | ck_xxl | Δ | mx_xxl | Δ | size GB | comp% | thrpt ch/s | b1 lat s | peak GB |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | fbk--gptq-rtn | 0.5727 | +0.0101 | 6.9124 | +0.6161 | 13.7 | 56 | 3010 | 3668.4 | 14.2 |
+| 2 | tahomamt--fp8-bok4 | 0.5696 | +0.0070 | 6.2988 | +0.0025 | 11.5 | 47 | 2378 | 123.4 | 21.8 |
+| 3 | arc-ilsp--fp8 | 0.5662 | +0.0036 | 6.2458 | -0.0505 | 14.8 | 61 | 3471 | 662.1 | 6.5 |
+| 4 | pare4bit--int4-gptq | 0.5655 | +0.0029 | 6.4343 | +0.1380 | 7.6 | 31 | 1923 | 5743.7 | 8.8 |
+| 5 | fbk--sq-gptq | 0.5654 | +0.0028 | 6.9537 | +0.6574 | 13.7 | 56 | 2740 | 3782.0 | 14.3 |
+| 6 | baseline--bnb-q8 | 0.5633 | +0.0007 | 6.2952 | -0.0011 | 13.3 | 54 | 252 | 12233.8 | 5.8 |
+| 7 | tahomamt--fp8 | 0.5631 | +0.0005 | 6.4555 | +0.1592 | 11.5 | 47 | 6047 | 845.3 | 21.8 |
+| 8 | tiny-titans--gptq-int4-calibrated | 0.5627 | +0.0001 | 6.3289 | +0.0326 | 7.6 | 31 | 945 | 3651.6 | 8.3 |
+| 9 | baseline--uncompressed ⟵ | 0.5626 | +0.0000 | 6.2963 | +0.0000 | 24.4 | 100 | 636 | 3722.8 | 5.8 |
+| 10 | cometcut--gptq | 0.5619 | -0.0007 | 6.4701 | +0.1738 | 8.5 | 35 | 2942 | 739.5 | 9.7 |
+| 11 | arc-ilsp--vocaball-int4 | 0.5611 | -0.0015 | 6.3620 | +0.0657 | 7.1 | 29 | 3559 | 615.0 | 8.3 |
+| 12 | tahomamt--int4-bok4 | 0.5608 | -0.0018 | 6.6138 | +0.3175 | 6.5 | 27 | 2122 | 145.5 | 12.4 |
+| 13 | cometcut--comet-mixed-precision | 0.5598 | -0.0028 | 6.3945 | +0.0982 | 9.2 | 37 | 3115 | 83.0 | 6.4 |
+| 14 | pare4bit--pruned4-healed-int4 | 0.5569 | -0.0057 | 7.3804 | +1.0841 | 7.1 | 29 | 2003 | 5218.2 | 8.4 |
+| 15 | baseline--bnb-q4 | 0.5547 | -0.0079 | 6.4872 | +0.1909 | 8.4 | 34 | 811 | 3611.4 | 5.7 |
+| 16 | cometcut--awq | 0.5538 | -0.0088 | 6.4494 | +0.1531 | 8.5 | 35 | 3291 | 735.3 | 9.7 |
+| 17 | tahomamt--int4 | 0.5492 | -0.0134 | 6.6822 | +0.3859 | 6.5 | 26 | 5206 | 772.0 | 13.0 |
+| 18 | vicomtech--ratio_0.25_ffn_awq_4bits | 0.5408 | -0.0218 | 10.4334 | +4.1371 | 6.1 | 25 | 4255 | 414.8 | 7.3 |
+| 19 | vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits_ces-deu | 0.4466 | -0.1160 | 14.3074 | +8.0111 | 3.9 | 16 | 4551 | 280.7 | 5.0 |
+| 20 | vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits | 0.4433 | -0.1193 | 14.1715 | +7.8752 | 4.6 | 19 | 4402 | 285.8 | 5.9 |
+| 21 | tiny-titans--svd-qkv512-ff1620 | 0.3181 | -0.2445 | 19.7394 | +13.4431 | 12.6 | 52 | 33 | 1181.0 | 12.7 |
+| 22 | tmu-onono--diba-triton_direct | 0.2765 | -0.2861 | 18.8473 | +12.5510 | 2.5 | 10 | 445 | 4394.0 | 3.4 |
+| 23 | tmu-onono--diba-cached_unpacked | 0.2740 | -0.2886 | 18.8453 | +12.5490 | 2.5 | 10 | 3160 | 1907.4 | 5.7 |
+| 24 | vicomtech--ratio_0.50_ffn_awq_4bits | 0.2647 | -0.2979 | 16.7664 | +10.4701 | 4.6 | 19 | 4343 | 351.3 | 5.9 |
+| 25 | tiny-titans--svd-qkv512-ff1620-q4-g32-full | 0.2478 | -0.3148 | 21.5980 | +15.3017 | 5.4 | 22 | 873 | 527.4 | 5.9 |
+
+### ces-deu — Unconstrained (different base model; not a compression ratio)
+
+| # | system | ck_xxl | Δ | mx_xxl | Δ | size GB | thrpt ch/s | b1 lat s | peak GB |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | tildeopen--15B-GPTQ-nvfp4a16 | 0.5926 | +0.0300 | 6.2385 | -0.0578 | 10.1 | 1057 | 2347.6 | 10.7 |
+| 2 | pare4bit--unconstrained-gemma4 | 0.5887 | +0.0261 | 6.0834 | -0.2129 | 10.3 | 996 | 3135.9 | 9.8 |
+| 3 | tildeopen--15B-RTN-fp8-dyn | 0.5885 | +0.0259 | 6.2419 | -0.0544 | 16.3 | 908 | 2665.1 | 16.4 |
+| 4 | tildeopen--8B-distill | 0.5811 | +0.0185 | 6.3419 | +0.0456 | 16.3 | 1302 | 2145.4 | 16.5 |
+| 5 | tildeopen--8B-distill-GPTQ-nvfp4a16 | 0.5810 | +0.0184 | 6.3931 | +0.0968 | 5.7 | 948 | 2209.4 | 6.6 |
+| 6 | tildeopen--8B-distill-RTN-fp8-dyn | 0.5794 | +0.0168 | 6.2684 | -0.0279 | 8.9 | 847 | 2286.8 | 9.6 |
+
+## eng-zho_Hans
+
+### eng-zho_Hans — Constrained (compress gemma-3-12b; Δ/comp% vs baseline--uncompressed)
+
+| # | system | ck_xxl | Δ | mx_xxl | Δ | size GB | comp% | thrpt ch/s | b1 lat s | peak GB |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | tahomamt--fp8-bok4 | 0.7749 | +0.0054 | 2.6568 | -0.1160 | 11.5 | 47 | 2558 | — | 21.8 |
+| 2 | tahomamt--int4-bok4 | 0.7706 | +0.0011 | 2.6904 | -0.0824 | 6.5 | 27 | 2473 | — | 12.4 |
+| 3 | cometcut--comet-mixed-precision | 0.7698 | +0.0003 | 2.7512 | -0.0216 | 9.2 | 37 | 3097 | — | 7.5 |
+| 4 | baseline--uncompressed ⟵ | 0.7695 | +0.0000 | 2.7728 | +0.0000 | 24.4 | 100 | 881 | — | 5.8 |
+| 5 | arc-ilsp--fp8 | 0.7691 | -0.0004 | 2.7486 | -0.0242 | 14.8 | 61 | 3901 | — | 7.5 |
+| 6 | baseline--bnb-q8 | 0.7684 | -0.0011 | 2.7986 | +0.0258 | 13.3 | 54 | 508 | — | 5.9 |
+| 7 | tahomamt--fp8 | 0.7674 | -0.0021 | 2.7824 | +0.0096 | 11.5 | 47 | 6052 | — | 21.8 |
+| 8 | alonso--layeraware-native-mlp-q4 | 0.7669 | -0.0026 | 2.7836 | +0.0108 | 11.8 | 48 | 867 | — | 5.7 |
+| 9 | baseline--bnb-q4 | 0.7665 | -0.0030 | 2.8147 | +0.0419 | 8.4 | 34 | 868 | — | 7.5 |
+| 10 | cometcut--gptq | 0.7655 | -0.0040 | 2.7600 | -0.0128 | 8.5 | 35 | 3166 | — | 9.7 |
+| 11 | arc-ilsp--int4 | 0.7646 | -0.0049 | 2.8467 | +0.0739 | 7.6 | 31 | 3537 | — | 6.5 |
+| 12 | pare4bit--int4-gptq | 0.7644 | -0.0051 | 2.7772 | +0.0044 | 7.6 | 31 | 1931 | — | 8.8 |
+| 13 | cometcut--awq | 0.7602 | -0.0093 | 2.8177 | +0.0449 | 8.5 | 35 | 3137 | — | 9.7 |
+| 14 | pare4bit--pruned4-healed-int4 | 0.7583 | -0.0112 | 2.9739 | +0.2011 | 7.1 | 29 | 1856 | — | 8.4 |
+| 15 | tahomamt--int4 | 0.7574 | -0.0121 | 2.8207 | +0.0479 | 6.5 | 26 | 4879 | — | 13.0 |
+| 16 | vicomtech--ratio_0.25_ffn_awq_4bits | 0.7248 | -0.0447 | 3.6745 | +0.9017 | 6.1 | 25 | 5127 | — | 7.5 |
+| 17 | vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits_eng-zho | 0.5805 | -0.1890 | 5.7679 | +2.9951 | 4.0 | 16 | 4133 | — | 5.2 |
+| 18 | vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits | 0.5804 | -0.1891 | 5.7004 | +2.9276 | 4.6 | 19 | 5598 | — | 7.2 |
+| 19 | slicers--navadeep-gemma3-12b | 0.5688 | -0.2007 | 5.6239 | +2.8511 | 16.6 | 68 | 825 | — | 16.6 |
+| 20 | vicomtech--ratio_0.50_ffn_awq_4bits | 0.5557 | -0.2138 | 5.7350 | +2.9622 | 4.6 | 19 | 5244 | — | 7.5 |
+
+### eng-zho_Hans — Unconstrained (different base model; not a compression ratio)
+
+| # | system | ck_xxl | Δ | mx_xxl | Δ | size GB | thrpt ch/s | b1 lat s | peak GB |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | pare4bit--unconstrained-gemma4 | 0.7908 | +0.0213 | 2.6241 | -0.1487 | 10.3 | 951 | — | 9.8 |
+| 2 | ests--gptoss-zho-k26 | 0.7244 | -0.0451 | 3.3541 | +0.5813 | 5.5 | 319 | — | 5.9 |
+| 3 | ests--gptoss-zho-k27 | 0.7140 | -0.0555 | 3.4451 | +0.6723 | 5.2 | 310 | — | 6.0 |
+| 4 | ests--gptoss-zho-k28 | 0.6890 | -0.0805 | 3.7355 | +0.9627 | 4.9 | 249 | — | 5.8 |
+
+## eng-ara_EG
+
+### eng-ara_EG — Constrained (compress gemma-3-12b; Δ/comp% vs baseline--uncompressed)
+
+| # | system | ck_xxl | Δ | mx_xxl | Δ | size GB | comp% | thrpt ch/s | b1 lat s | peak GB |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | vicomtech--ratio_0.25_ffn_awq_4bits | 0.7069 | +0.0918 | 5.6286 | +0.2647 | 6.1 | 25 | 4125 | — | 7.5 |
+| 2 | tahomamt--int4-bok4 | 0.6431 | +0.0280 | 5.0776 | -0.2863 | 6.5 | 27 | 2037 | — | 12.4 |
+| 3 | tahomamt--fp8-bok4 | 0.6312 | +0.0161 | 5.2881 | -0.0758 | 11.5 | 47 | 2317 | — | 21.8 |
+| 4 | tahomamt--int4 | 0.6211 | +0.0060 | 5.4629 | +0.0990 | 6.5 | 26 | 4253 | — | 13.0 |
+| 5 | pare4bit--pruned4-healed-int4 | 0.6199 | +0.0048 | 5.7265 | +0.3626 | 7.1 | 29 | 1495 | — | 8.4 |
+| 6 | baseline--uncompressed ⟵ | 0.6151 | +0.0000 | 5.3639 | +0.0000 | 24.4 | 100 | 717 | — | 5.8 |
+| 7 | arc-ilsp--en-ar-mbr | 0.6142 | -0.0009 | 5.5382 | +0.1743 | 7.1 | 29 | 767 | — | 8.3 |
+| 8 | baseline--bnb-q8 | 0.6105 | -0.0046 | 5.4909 | +0.1270 | 13.3 | 54 | 418 | — | 5.9 |
+| 9 | cometcut--awq | 0.6099 | -0.0052 | 5.6717 | +0.3078 | 8.5 | 35 | 2665 | — | 9.7 |
+| 10 | tahomamt--fp8 | 0.6099 | -0.0052 | 5.4918 | +0.1279 | 11.5 | 47 | 4410 | — | 21.8 |
+| 11 | arc-ilsp--fp8 | 0.6084 | -0.0067 | 5.5100 | +0.1461 | 14.8 | 61 | 2871 | — | 7.5 |
+| 12 | baseline--bnb-q4 | 0.6066 | -0.0085 | 5.6233 | +0.2594 | 8.4 | 34 | 722 | — | 7.5 |
+| 13 | cometcut--gptq | 0.6058 | -0.0093 | 5.6166 | +0.2527 | 8.5 | 35 | 2546 | — | 9.7 |
+| 14 | cometcut--comet-mixed-precision | 0.6019 | -0.0132 | 5.4627 | +0.0988 | 9.2 | 37 | 2486 | — | 7.5 |
+| 15 | pare4bit--int4-gptq | 0.6014 | -0.0137 | 5.7105 | +0.3466 | 7.6 | 31 | 1401 | — | 8.8 |
+| 16 | arc-ilsp--vocaball-int4 | 0.6010 | -0.0141 | 5.6693 | +0.3054 | 7.1 | 29 | 3526 | — | 8.3 |
+| 17 | vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits | 0.5830 | -0.0321 | 7.6735 | +2.3096 | 4.6 | 19 | 4740 | — | 7.2 |
+| 18 | vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits_eng-ara | 0.5826 | -0.0325 | 7.6860 | +2.3221 | 3.9 | 16 | 3330 | — | 5.1 |
+| 19 | vicomtech--ratio_0.50_ffn_awq_4bits | 0.4885 | -0.1266 | 10.0958 | +4.7319 | 4.6 | 19 | 4601 | — | 7.5 |
+
+### eng-ara_EG — Unconstrained (different base model; not a compression ratio)
+
+| # | system | ck_xxl | Δ | mx_xxl | Δ | size GB | thrpt ch/s | b1 lat s | peak GB |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | pare4bit--unconstrained-gemma4 | 0.6822 | +0.0671 | 4.4869 | -0.8770 | 10.3 | 1262 | — | 9.8 |
+| 2 | ests--gptoss-arz-k22 | 0.6202 | +0.0051 | 5.8402 | +0.4763 | 6.8 | 503 | — | 6.0 |
+| 3 | ests--gptoss-arz-k24 | 0.6081 | -0.0070 | 6.0546 | +0.6907 | 6.2 | 100 | — | 5.9 |
+| 4 | ests--gptoss-arz-k26 | 0.5678 | -0.0473 | 7.0141 | +1.6502 | 5.5 | 94 | — | 5.9 |
+

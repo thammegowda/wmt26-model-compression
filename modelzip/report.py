@@ -200,22 +200,36 @@ def build_rows(work_dir: Path, collected: Path, testset: str, metrics: list) -> 
     return rows
 
 
-def print_markdown(rows: list, metrics: list):
+def _md_row(cells):
+    return "| " + " | ".join(cells) + " |"
+
+
+def build_markdown(rows: list, metrics: list, testset: str) -> list:
     primary = short(metrics[0])
     lower = lower_is_better(metrics[0])
     worst = float("inf") if lower else float("-inf")
+    out = [f"# WMT26 Model-Compression Leaderboard — {testset}", ""]
+    out += [
+        "Reference-free QE on the blind set. **Δ** = system − `baseline--uncompressed` (same direction).",
+        "",
+        "- **ck_xxl** = cometkiwi-XXL (higher is better) · **mx_xxl** = MetricX-24-XXL (lower is better)",
+        "- **size GB** on-disk weights · **comp%** = size vs baseline (constrained only) · "
+        "**thrpt ch/s** = source chars ÷ wall-time at the largest measured batch · "
+        "**b1 lat s** = batch-1 single-stream wall-time on ces-deu (speed track) · **peak GB** = peak host RSS",
+        "- Tracks: **constrained** = compress gemma-3-12b · **unconstrained** = different base model (shown separately)",
+        "",
+    ]
     by_pair = {}
     for r in rows:
         by_pair.setdefault(r["pair"], []).append(r)
-    sep = " | "
     for pair in PAIRS:
         prs = by_pair.get(pair)
         if not prs:
             continue
-        print(f"### {pair}\n")
+        out += [f"## {pair}", ""]
         for track, title, show_comp in (
             ("constrained", "Constrained (compress gemma-3-12b; Δ/comp% vs baseline--uncompressed)", True),
-            ("unconstrained", "Unconstrained (different base model; NOT a compression ratio)", False),
+            ("unconstrained", "Unconstrained (different base model; not a compression ratio)", False),
         ):
             sub = [r for r in prs if r["track"] == track]
             if not sub:
@@ -225,9 +239,7 @@ def print_markdown(rows: list, metrics: list):
             for m in metrics:
                 cols += [short(m), "Δ"]
             cols += ["size GB"] + (["comp%"] if show_comp else []) + ["thrpt ch/s", "b1 lat s", "peak GB"]
-            print(f"#### {pair} — {title}")
-            print(sep.join(cols))
-            print(sep.join(["---"] * len(cols)))
+            out += [f"### {pair} — {title}", "", _md_row(cols), _md_row(["---"] * len(cols))]
             for i, r in enumerate(sub, 1):
                 line = [str(i), r["system"] + (" ⟵" if r["system"] == ANCHOR else "")]
                 for m in metrics:
@@ -238,8 +250,9 @@ def print_markdown(rows: list, metrics: list):
                 line += [fmt(r.get("thrpt_chars_per_s"), "{:.0f}"),
                          fmt(r.get("batch1_latency_s"), "{:.1f}"),
                          fmt(r.get("peak_rss_gb"), "{:.1f}")]
-                print(sep.join(line))
-            print()
+                out.append(_md_row(line))
+            out.append("")
+    return out
 
 
 def _tsv_val(v):
@@ -277,14 +290,16 @@ def write_long_tsv(rows: list, path: Path, metrics: list):
 def report(work_dir: Path, collected: Path, testset: str, metrics: list, out_dir: Path = None):
     work_dir = Path(work_dir)
     rows = build_rows(work_dir, collected, testset, metrics)
-    print_markdown(rows, metrics)
+    md = build_markdown(rows, metrics, testset)
+    print("\n".join(md))
     if out_dir:
         out_dir = Path(out_dir)
-        wide = out_dir / f"summary.{testset}.tsv"
-        long = out_dir / f"metrics_long.{testset}.tsv"
-        write_tsv(rows, wide, metrics)
-        write_long_tsv(rows, long, metrics)
-        print(f"[report] wrote {wide} and {long} ({len(rows)} rows)")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / f"leaderboard.{testset}.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+        write_tsv(rows, out_dir / f"summary.{testset}.tsv", metrics)
+        write_long_tsv(rows, out_dir / f"metrics_long.{testset}.tsv", metrics)
+        print(f"[report] wrote leaderboard.{testset}.md, summary.{testset}.tsv, "
+              f"metrics_long.{testset}.tsv to {out_dir} ({len(rows)} rows)")
 
 
 def main():

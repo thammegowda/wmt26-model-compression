@@ -20,7 +20,7 @@ tildeopen--15B-GPTQ-nvfp4a16	unconstrained	llama	ces-deu	0.5926	0.03	6.2385	-0.0
 tildeopen--15B-RTN-fp8-dyn	unconstrained	llama	ces-deu	0.5885	0.0259	6.2419	-0.0544	16264501371	16.2645		907.951	2665.14	16.4324
 tildeopen--8B-distill	unconstrained	llama	ces-deu	0.5811	0.0185	6.3419	0.0456	16330821383	16.3308		1302.46	2145.44	16.4888
 tildeopen--8B-distill-GPTQ-nvfp4a16	unconstrained	llama	ces-deu	0.581	0.0184	6.3931	0.0968	5667519629	5.66752		947.762	2209.44	6.55511
-tildeopen--8B-distill-RTN-fp8-dyn	unconstrained	llama	ces-deu	0.5794	0.0168	6.2684	-0.0279	8916878318	8.91688		847.423		9.58684
+tildeopen--8B-distill-RTN-fp8-dyn	unconstrained	llama	ces-deu	0.5794	0.0168	6.2684	-0.0279	8916878318	8.91688		847.423	2286.8	9.58684
 tiny-titans--gptq-int4-calibrated	constrained	gemma3_text	ces-deu	0.5627	0.0001	6.3289	0.0326	7647681396	7.64768	31.3248	944.977	3651.6	8.29211
 tiny-titans--svd-qkv512-ff1620	constrained	gemma3_text	ces-deu	0.3181	-0.2445	19.7394	13.4431	12614971093	12.615	51.6707	32.9285	1180.97	12.7055
 tiny-titans--svd-qkv512-ff1620-q4-g32-full	constrained	gemma3_text	ces-deu	0.2478	-0.3148	21.598	15.3017	5355233995	5.35523	21.9349	872.794	527.446	5.94683
