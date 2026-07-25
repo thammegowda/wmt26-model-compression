@@ -119,6 +119,90 @@ def fmt(x, spec="{:.4f}", na="—"):
     return na if x is None else spec.format(x)
 
 
+CONSTRAINED_TYPES = {"gemma3", "gemma3_text"}  # the google/gemma-3-12b-it baseline family
+
+
+def _config_path(collected: Path, system: str):
+    for sub in ("model/config.json", "workdir/model/config.json"):
+        p = collected / system / sub
+        if p.is_file():
+            return p
+    return None
+
+
+def track_of(collected: Path, system: str) -> str:
+    """'constrained' if derived from the gemma-3-12b baseline, else 'unconstrained'.
+
+    Unconstrained submissions may start from a different base model (e.g. Gemma-4,
+    GPT-OSS, TildeOpen/Llama), so their size/quality is NOT a fair compression
+    comparison against our gemma-3-12b baseline.
+    """
+    if not collected:
+        return "constrained"
+    p = _config_path(collected, system)
+    if p:
+        try:
+            j = json.load(open(p))
+        except (OSError, json.JSONDecodeError):
+            j = {}
+        mt = j.get("model_type") or (j.get("text_config") or {}).get("model_type") or ""
+        archs = " ".join(j.get("architectures") or [])
+        if mt in CONSTRAINED_TYPES or "Gemma3" in archs:
+            return "constrained"
+        if mt or archs:
+            return "unconstrained"
+    readme = collected / system / "README.md"
+    if readme.is_file():
+        txt = readme.read_text(errors="replace").lower()
+        if "gemma-3" in txt or "gemma3" in txt:
+            return "constrained"
+        if any(o in txt for o in ("gemma-4", "gemma4", "gpt-oss", "gptoss", "tildeopen", "qwen")):
+            return "unconstrained"
+    return "constrained"
+
+
+def _emit_table(title, systems, pair, testset, metrics, qe, base_size, walls, rss, chars, collected, show_comp):
+    if not systems:
+        return
+    primary = metrics[0]
+    worst = float("inf") if lower_is_better(primary) else float("-inf")
+    systems = sorted(systems, key=lambda s: qe[primary].get((s, pair), worst),
+                     reverse=not lower_is_better(primary))
+    cols = ["#", "system"]
+    for m in metrics:
+        cols += [short(m), "Δ"]
+    cols += ["size GB"] + (["comp%"] if show_comp else []) + ["thrpt ch/s", "b1 lat s", "peak GB"]
+    sep = " | "
+    print(f"#### {pair} — {title}")
+    print(sep.join(cols))
+    print(sep.join(["---"] * len(cols)))
+    for i, s in enumerate(systems, 1):
+        row = [str(i), s + (" ⟵" if s == ANCHOR else "")]
+        for m in metrics:
+            v = qe[m].get((s, pair))
+            a = qe[m].get((ANCHOR, pair))
+            d = None if (v is None or a is None) else v - a
+            row += [fmt(v), fmt(d, "{:+.4f}")]
+        sz = model_size(collected, s)
+        row += [fmt(sz / 1e9 if sz else None, "{:.1f}")]
+        if show_comp:
+            comp = None if (sz is None or not base_size) else 100.0 * sz / base_size
+            row += [fmt(comp, "{:.0f}")]
+        thr = lat = peak = None
+        sbatches = [b for (mm, b) in walls if mm == s]
+        if sbatches:
+            bmax = max(sbatches)
+            if walls.get((s, bmax)) and chars:
+                thr = chars / walls[(s, bmax)]
+            if walls.get((s, 1)):
+                lat = walls[(s, 1)]
+            if rss.get((s, bmax)):
+                peak = rss[(s, bmax)] / (1024 * 1024)  # KB -> GB
+        row += [fmt(thr, "{:.0f}"), fmt(lat, "{:.1f}"), fmt(peak, "{:.1f}")]
+        print(sep.join(row))
+    print()
+
+
 def report(work_dir: Path, collected: Path, testset: str, metrics: list):
     work_dir = Path(work_dir)
     scores_dir = work_dir / "scores"
@@ -126,52 +210,23 @@ def report(work_dir: Path, collected: Path, testset: str, metrics: list):
     qe = {m: load_qe(scores_dir, testset, m) for m in metrics}
     base_size = model_size(collected, ANCHOR)
     primary = metrics[0]
+    tracks = {}
 
     for pair in PAIRS:
         walls, rss = load_speed(tests_dir, testset, pair)
         chars = workload_chars(tests_dir, testset, pair)
-        systems = sorted({model for (model, p) in qe[primary] if p == pair})
+        systems = {model for (model, p) in qe[primary] if p == pair}
         if not systems:
             continue
-        worst = float("inf") if lower_is_better(primary) else float("-inf")
-        systems.sort(key=lambda s: qe[primary].get((s, pair), worst),
-                     reverse=not lower_is_better(primary))
-
-        cols = ["#", "system"]
-        for m in metrics:
-            cols += [short(m), "Δ"]
-        cols += ["size GB", "comp%", "thrpt ch/s", "b1 lat s", "peak GB"]
-        sep = " | "
-        print(f"### {pair}  ({testset}; anchor {ANCHOR})")
-        print(sep.join(cols))
-        print(sep.join(["---"] * len(cols)))
-        for i, s in enumerate(systems, 1):
-            row = [str(i), s + (" ⟵" if s == ANCHOR else "")]
-            for m in metrics:
-                v = qe[m].get((s, pair))
-                a = qe[m].get((ANCHOR, pair))
-                d = None if (v is None or a is None) else v - a
-                row += [fmt(v), fmt(d, "{:+.4f}")]
-            sz = model_size(collected, s)
-            comp = None if (sz is None or not base_size) else 100.0 * sz / base_size
-            sbatches = [b for (mm, b) in walls if mm == s]
-            thr = lat = peak = None
-            if sbatches:
-                bmax = max(sbatches)
-                w = walls.get((s, bmax))
-                if w and chars:
-                    thr = chars / w
-                if walls.get((s, 1)):
-                    lat = walls[(s, 1)]
-                if rss.get((s, bmax)):
-                    peak = rss[(s, bmax)] / (1024 * 1024)  # KB -> GB
-            row += [fmt(sz / 1e9 if sz else None, "{:.1f}"),
-                    fmt(comp, "{:.0f}"),
-                    fmt(thr, "{:.0f}"),
-                    fmt(lat, "{:.1f}"),
-                    fmt(peak, "{:.1f}")]
-            print(sep.join(row))
-        print()
+        for s in systems:
+            tracks.setdefault(s, track_of(collected, s))
+        con = [s for s in systems if tracks[s] == "constrained"]
+        unc = [s for s in systems if tracks[s] == "unconstrained"]
+        print(f"### {pair}  ({testset})\n")
+        _emit_table("Constrained (compress gemma-3-12b; Δ/comp% vs baseline--uncompressed)",
+                    con, pair, testset, metrics, qe, base_size, walls, rss, chars, collected, show_comp=True)
+        _emit_table("Unconstrained (different base model; NOT a compression ratio vs our baseline)",
+                    unc, pair, testset, metrics, qe, base_size, walls, rss, chars, collected, show_comp=False)
 
 
 def main():
