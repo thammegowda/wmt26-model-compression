@@ -14,22 +14,22 @@ pare4bit--pruned4-healed-int4	constrained	gemma3_text	ces-deu	0.5569	-0.0057	7.3
 pare4bit--unconstrained-gemma4	unconstrained	gemma4_unified	ces-deu	0.5887	0.0261	6.0834	-0.2129	10296462441	10.2965		996.382	3135.89	9.77147
 tahomamt--fp8	constrained	gemma3	ces-deu	0.5631	0.0005	6.4555	0.1592	11514537142	11.5145	47.1633	6046.95	845.303	21.8
 tahomamt--fp8-bok4	constrained	gemma3	ces-deu	0.5696	0.007	6.2988	0.0025	11522977446	11.523	47.1979	2378.33	123.403	21.7922
-tahomamt--int4	constrained	gemma3	ces-deu	0.5492	-0.0134	6.6822	0.3859	6462622534	6.46262	26.4708	5206.09		13.0309
+tahomamt--int4	constrained	gemma3	ces-deu	0.5492	-0.0134	6.6822	0.3859	6462622534	6.46262	26.4708	5206.09	772.043	13.0309
 tahomamt--int4-bok4	constrained	gemma3	ces-deu	0.5608	-0.0018	6.6138	0.3175	6471062838	6.47106	26.5054	2121.95	145.513	12.3748
-tildeopen--15B-GPTQ-nvfp4a16	unconstrained	llama	ces-deu	0.5926	0.03	6.2385	-0.0578	10093516652	10.0935		1057.11		10.679
-tildeopen--15B-RTN-fp8-dyn	unconstrained	llama	ces-deu	0.5885	0.0259	6.2419	-0.0544	16264501371	16.2645		907.951		16.4324
-tildeopen--8B-distill	unconstrained	llama	ces-deu	0.5811	0.0185	6.3419	0.0456	16330821383	16.3308		1302.46		16.4888
-tildeopen--8B-distill-GPTQ-nvfp4a16	unconstrained	llama	ces-deu	0.581	0.0184	6.3931	0.0968	5667519629	5.66752		947.762		6.55511
+tildeopen--15B-GPTQ-nvfp4a16	unconstrained	llama	ces-deu	0.5926	0.03	6.2385	-0.0578	10093516652	10.0935		1057.11	2347.61	10.679
+tildeopen--15B-RTN-fp8-dyn	unconstrained	llama	ces-deu	0.5885	0.0259	6.2419	-0.0544	16264501371	16.2645		907.951	2665.14	16.4324
+tildeopen--8B-distill	unconstrained	llama	ces-deu	0.5811	0.0185	6.3419	0.0456	16330821383	16.3308		1302.46	2145.44	16.4888
+tildeopen--8B-distill-GPTQ-nvfp4a16	unconstrained	llama	ces-deu	0.581	0.0184	6.3931	0.0968	5667519629	5.66752		947.762	2209.44	6.55511
 tildeopen--8B-distill-RTN-fp8-dyn	unconstrained	llama	ces-deu	0.5794	0.0168	6.2684	-0.0279	8916878318	8.91688		847.423		9.58684
-tiny-titans--gptq-int4-calibrated	constrained	gemma3_text	ces-deu	0.5627	0.0001	6.3289	0.0326	7647681396	7.64768	31.3248	944.977		8.29211
-tiny-titans--svd-qkv512-ff1620	constrained	gemma3_text	ces-deu	0.3181	-0.2445	19.7394	13.4431	12614971093	12.615	51.6707	32.9285		12.7055
+tiny-titans--gptq-int4-calibrated	constrained	gemma3_text	ces-deu	0.5627	0.0001	6.3289	0.0326	7647681396	7.64768	31.3248	944.977	3651.6	8.29211
+tiny-titans--svd-qkv512-ff1620	constrained	gemma3_text	ces-deu	0.3181	-0.2445	19.7394	13.4431	12614971093	12.615	51.6707	32.9285	1180.97	12.7055
 tiny-titans--svd-qkv512-ff1620-q4-g32-full	constrained	gemma3_text	ces-deu	0.2478	-0.3148	21.598	15.3017	5355233995	5.35523	21.9349	872.794	527.446	5.94683
-tmu-onono--diba-cached_unpacked	constrained	gemma3	ces-deu	0.274	-0.2886	18.8453	12.549	2506461754	2.50646	10.2664	3160.06		5.68925
-tmu-onono--diba-triton_direct	constrained	gemma3	ces-deu	0.2765	-0.2861	18.8473	12.551	2506461733	2.50646	10.2664	445.102		3.35389
-vicomtech--ratio_0.25_ffn_awq_4bits	constrained	gemma3_text	ces-deu	0.5408	-0.0218	10.4334	4.1371	6130551911	6.13055	25.1106	4255.25		7.28733
-vicomtech--ratio_0.50_ffn_awq_4bits	constrained	gemma3_text	ces-deu	0.2647	-0.2979	16.7664	10.4701	4586133902	4.58613	18.7847	4343.04		5.8504
-vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits	constrained	gemma3_text	ces-deu	0.4433	-0.1193	14.1715	7.8752	4586167478	4.58617	18.7849	4401.71		5.85093
-vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits_ces-deu	constrained	gemma3_text	ces-deu	0.4466	-0.116	14.3074	8.0111	3862030399	3.86203	15.8188	4550.51		5.00734
+tmu-onono--diba-cached_unpacked	constrained	gemma3	ces-deu	0.274	-0.2886	18.8453	12.549	2506461754	2.50646	10.2664	3160.06	1907.43	5.68925
+tmu-onono--diba-triton_direct	constrained	gemma3	ces-deu	0.2765	-0.2861	18.8473	12.551	2506461733	2.50646	10.2664	445.102	4393.98	3.35389
+vicomtech--ratio_0.25_ffn_awq_4bits	constrained	gemma3_text	ces-deu	0.5408	-0.0218	10.4334	4.1371	6130551911	6.13055	25.1106	4255.25	414.828	7.28733
+vicomtech--ratio_0.50_ffn_awq_4bits	constrained	gemma3_text	ces-deu	0.2647	-0.2979	16.7664	10.4701	4586133902	4.58613	18.7847	4343.04	351.334	5.8504
+vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits	constrained	gemma3_text	ces-deu	0.4433	-0.1193	14.1715	7.8752	4586167478	4.58617	18.7849	4401.71	285.784	5.85093
+vicomtech--ratio_0.50_ffn_sft_checkpoint-4802_awq_4bits_ces-deu	constrained	gemma3_text	ces-deu	0.4466	-0.116	14.3074	8.0111	3862030399	3.86203	15.8188	4550.51	280.674	5.00734
 alonso--layeraware-native-mlp-q4	constrained	gemma3	eng-zho_Hans	0.7669	-0.0026	2.7836	0.0108	11804443105	11.8044	48.3508	866.858		5.73938
 arc-ilsp--fp8	constrained	gemma3_text	eng-zho_Hans	0.7691	-0.0004	2.7486	-0.0242	14831349789	14.8313	60.7489	3900.89		7.51719
 arc-ilsp--int4	constrained	gemma3_text	eng-zho_Hans	0.7646	-0.0049	2.8467	0.0739	7602097208	7.6021	31.1381	3536.52		6.45937
