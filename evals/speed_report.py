@@ -126,10 +126,16 @@ def main():
         cells = ""
         for b in batches:
             r = next((x for x in rows if x["system"] == sysname and x["batch"] == b), None)
-            cells += (f"{r['net_cps']:.0f}".rjust(9) if r and r["net_cps"] else "-".rjust(9))
+            if r and r["net_cps"]:
+                # '?' = load is >65% of wall -> (wall-load) is tiny and net is noise-dominated
+                mark = "?" if (r["load_frac"] or 0) > 0.65 else " "
+                cells += f"{r['net_cps']:.0f}{mark}".rjust(9)
+            else:
+                cells += "-".rjust(9)
         l1 = next((x for x in rows if x["system"] == sysname and x["batch"] == 1), None)
         load = f"{l1['load_med']:.0f}" if l1 and l1["load_med"] is not None else "-"
         print(sysname.ljust(36) + cells + "   " + load)
+    print("  ('?' = load >65% of wall: net is noise-dominated on this short set, prefer gross_cps in the TSV)")
 
     if flags:
         print(f"\n=== OUTLIER runs ({len(flags)}) — inspect these ===")
