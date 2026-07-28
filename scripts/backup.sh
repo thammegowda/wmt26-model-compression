@@ -22,7 +22,7 @@ for subdir in "${SUB_DIRS[@]}"; do
         continue
     fi
     log "Syncing  $local_dir --> $remote_dir"
-    cmd="azcopy sync $local_dir $remote_dir --compare-hash=MD5 --put-md5 --local-hash-storage-mode HiddenFiles --exclude-regex '.*/\.venv/.*;.*/\.venv-compress/.*;.*/\.uv-cache/.*;.*/__pycache__/.*;.*/eval-workdir/backup/.*;.*/metricx_stage/.*;.*\.RESOLVED$'"
+    cmd="azcopy sync $local_dir $remote_dir --compare-hash=MD5 --put-md5 --local-hash-storage-mode HiddenFiles --exclude-regex '.*/\.venv/.*;.*/\.venv-compress/.*;.*/\.uv-cache/.*;.*/__pycache__/.*;.*/eval-workdir/backup/.*;.*/metricx_stage/.*;.*\.RESOLVED$;.*\.tmp$'"
     if [ $DRY_RUN -eq 1 ]; then
         cmd+=" --dry-run"        
     fi

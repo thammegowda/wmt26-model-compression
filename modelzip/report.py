@@ -153,7 +153,8 @@ def classify(collected: Path, system: str):
             txt = readme.read_text(errors="replace").lower()
             if "gemma-3" in txt or "gemma3" in txt:
                 return "constrained", "gemma3"
-            for o in ("gemma-4", "gemma4", "gpt-oss", "gptoss", "tildeopen", "qwen"):
+            for o in ("gemma-4", "gemma4", "gpt-oss", "gptoss", "tildeopen", "qwen",
+                      "aya", "cohere", "aya-expanse"):
                 if o in txt:
                     return "unconstrained", o
     return "constrained", "unknown"
