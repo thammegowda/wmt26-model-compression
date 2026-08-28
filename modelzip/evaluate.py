@@ -22,11 +22,20 @@ PYMARIAN_CACHE = os.getenv("PYMARIAN_CACHE", "/mnt/tg/data/cache/marian/metric")
 PYMARIAN_EXTRA = os.getenv("PYMARIAN_EXTRA", "-c 16")  # default: CPU threads (GPU fused attention NaN on H100)
 
 
-def get_score(src_file: Path, out_file: Path, ref_file: Path, metric: str):
+def is_qe_metric(metric: str) -> bool:
+    """Reference-free quality-estimation metrics (e.g. cometkiwi)."""
+    m = metric.lower()
+    return "kiwi" in m or "comet-qe" in m or m.endswith("-qe")
+
+
+def get_score(src_file: Path, out_file: Path, ref_file: Path | None, metric: str):
     if metric == "chrf":
         cmd = f"sacrebleu {ref_file} -i {out_file} -m {metric} -b -lc"
     else:
-        cmd = f"pymarian-eval --cache {PYMARIAN_CACHE} {PYMARIAN_EXTRA} -m {metric} -r {ref_file} -t {out_file} -s {src_file} -a only"
+        ref_arg = ""
+        if ref_file is not None and Path(ref_file).exists():
+            ref_arg = f"-r {ref_file} "
+        cmd = f"pymarian-eval --cache {PYMARIAN_CACHE} {PYMARIAN_EXTRA} -m {metric} {ref_arg}-t {out_file} -s {src_file} -a only"
     LOG.info(f"Scoring: {cmd}")
     return sp.check_output(cmd, shell=True, text=True).strip()
 
@@ -141,14 +150,15 @@ def evaluate(
                 except sp.CalledProcessError as e:
                     LOG.error(f"Error running command: {e}")
                     continue
+            ref_ok = ref.exists() and ref.stat().st_size > 0
             for m in metrics:
-                if not ref.exists() or ref.stat().st_size == 0:
-                    LOG.info("Skipping %s for %s because reference file is missing", m, out)
+                if not ref_ok and not is_qe_metric(m):
+                    LOG.info("Skipping ref-based metric %s for %s (no reference)", m, out)
                     continue
                 score_file = out.with_suffix(out.suffix + f".{m}.score")
                 if not score_file.exists() or score_file.stat().st_size == 0:
                     try:
-                        score = get_score(src_file, out, ref, m)
+                        score = get_score(src_file, out, ref if ref_ok else None, m)
                         score_file.write_text(score)
                         LOG.info(f"{score_file.name} : {score}")
                     except sp.CalledProcessError as e:

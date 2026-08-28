@@ -25,6 +25,13 @@ if [[ ${#submissions[@]} -eq 0 ]]; then
     exit 1
 fi
 
+# Scoring needs pymarian-eval (COMET/cometkiwi). Install the pinned wheel if absent.
+PYMARIAN_WHEEL=${PYMARIAN_WHEEL:-/mnt/tg/data/bins/marian/260623-1.12.47/pymarian-1.12.47-cp312-cp312-linux_x86_64.whl}
+if ! command -v pymarian-eval >/dev/null 2>&1; then
+    echo "pymarian-eval missing; installing $PYMARIAN_WHEEL" >&2
+    pip install "$PYMARIAN_WHEEL"
+fi
+
 python -m modelzip.setup -w "$work"
 
 echo "Submissions: ${submissions[*]}"

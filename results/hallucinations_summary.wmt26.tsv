@@ -1,0 +1,4 @@
+pair	n_seg	n_clean	n_hall_union	n_systems	n_with_hall	max_dck
+ces-deu	315	303	12	37	6	0.0065
+eng-zho_Hans	945	935	10	25	16	0.0013
+eng-ara_EG	498	492	6	23	7	0.0033
